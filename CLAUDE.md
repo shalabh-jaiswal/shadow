@@ -1,3 +1,7 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # Shadow — Project Memory
 
 ## What This App Does
@@ -65,8 +69,11 @@ cargo tauri dev
 # Build release for current platform
 cargo tauri build
 
-# Run Rust tests
+# Run all Rust tests
 cargo test --manifest-path src-tauri/Cargo.toml
+
+# Run a single Rust test by name
+cargo test --manifest-path src-tauri/Cargo.toml <test_name>
 
 # Run frontend type check
 npm run type-check
