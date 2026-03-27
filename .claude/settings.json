@@ -1,0 +1,95 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo:*)",
+      "Bash(npm:*)",
+      "Bash(git status)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git tag:*)",
+      "Bash(git checkout:*)",
+      "Bash(git branch:*)",
+      "Bash(git pull:*)",
+      "Bash(git fetch:*)",
+      "Bash(cat:*)",
+      "Bash(ls:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(mkdir:*)",
+      "Bash(cp:*)",
+      "Bash(mv:*)",
+      "Bash(echo:*)",
+      "Bash(jq:*)"
+    ],
+    "deny": [
+      "Bash(rm -rf:*)",
+      "Bash(sudo:*)",
+      "Bash(curl:*)",
+      "Bash(wget:*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ \"$(git -C \"$(pwd)\" branch --show-current 2>/dev/null)\" != \"main\" ] || { echo '{\"block\": true, \"message\": \"Direct edits to main branch are not allowed. Create a feature branch first: git checkout -b feat/your-feature\"}' >&2; exit 2; }",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "file=\"$(echo \"$CLAUDE_TOOL_INPUT\" | jq -r '.file_path // empty')\"; if [ -n \"$file\" ]; then case \"$file\" in *.rs) cargo fmt --manifest-path src-tauri/Cargo.toml --check -- \"$file\" 2>/dev/null || true ;; esac; fi",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "file=\"$(echo \"$CLAUDE_TOOL_INPUT\" | jq -r '.file_path // empty')\"; if [ -n \"$file\" ]; then case \"$file\" in *.rs) echo \"[hook] Rust file modified: $file — run 'cargo clippy' to verify\" ;; *.ts|*.tsx) echo \"[hook] TypeScript file modified: $file — run 'npm run type-check' to verify\" ;; esac; fi",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cmd=\"$(echo \"$CLAUDE_TOOL_INPUT\" | jq -r '.command // empty')\"; case \"$cmd\" in *'cargo build'*|*'cargo tauri build'*) echo '[hook] Build complete — check for warnings above' ;; *'cargo test'*) echo '[hook] Tests complete' ;; esac",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '[shadow] Session ended. Remember: cargo clippy + npm run type-check before committing.'",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  },
+  "env": {
+    "RUST_LOG": "shadow=debug,warn",
+    "RUST_BACKTRACE": "1"
+  }
+}

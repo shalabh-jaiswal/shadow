@@ -1,0 +1,48 @@
+# ── Rust ─────────────────────────────────────────────────────────────────────
+target/
+src-tauri/target/
+**/*.rs.bk
+*.pdb
+**/mutants.out*
+
+# ── React / Node.js ──────────────────────────────────────────────────────────
+node_modules/
+dist/
+build/
+.cache/
+*.log
+.env
+.env.local
+.env.*.local
+
+# ── Tauri ────────────────────────────────────────────────────────────────────
+src-tauri/WixTools/
+src-tauri/gen/
+
+# ── Shadow app data (local runtime files) ────────────────────────────────────
+.shadow/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# ── Claude Code ──────────────────────────────────────────────────────────────
+.claude/settings.local.json
+.claude/agent-memory/
+
+# ── IntelliJ IDEA ────────────────────────────────────────────────────────────
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+.idea_modules/
+
+# ── OS ───────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ── CI local testing ─────────────────────────────────────────────────────────
+.actrc
+.secrets
