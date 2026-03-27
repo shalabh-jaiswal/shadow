@@ -1,0 +1,1 @@
+- [No Python in Shadow project](feedback_no_python.md) — Python not installed, use PowerShell/cargo/node instead; System.Drawing works for PNG generation
