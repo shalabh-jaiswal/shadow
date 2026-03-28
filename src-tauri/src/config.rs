@@ -11,11 +11,36 @@ pub struct WatchedFolders {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct S3Config {
+    pub enabled: bool,
+    pub bucket: String,
+    pub region: String,
+    /// Named profile in ~/.aws/credentials (e.g. "shadow")
+    pub profile: String,
+    /// Optional key prefix prepended to every remote path
+    pub prefix: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct GcsConfig {
+    pub enabled: bool,
+    pub bucket: String,
+    /// Optional key prefix prepended to every remote path
+    pub prefix: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AppConfig {
     #[serde(default)]
     pub daemon: DaemonConfig,
     #[serde(default)]
+    pub machine: MachineConfig,
+    #[serde(default)]
     pub nas: NasConfig,
+    #[serde(default)]
+    pub s3: S3Config,
+    #[serde(default)]
+    pub gcs: GcsConfig,
     #[serde(default)]
     pub watched_folders: WatchedFolders,
 }
@@ -37,6 +62,15 @@ impl Default for DaemonConfig {
             follow_symlinks: false,
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct MachineConfig {
+    /// User-defined name used as the top-level prefix in all remote paths.
+    /// Overrides the OS hostname. Set this to avoid leaking your real machine name
+    /// to cloud storage buckets. Example: "home-mac", "work-laptop".
+    /// Leave empty to fall back to the OS hostname.
+    pub name: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

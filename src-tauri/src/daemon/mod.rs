@@ -4,7 +4,7 @@ pub mod queue;
 pub mod watcher;
 
 use crate::config::SharedConfig;
-use crate::providers::{nas::NasProvider, DynProvider};
+use crate::providers::{gcs::GcsProvider, nas::NasProvider, s3::S3Provider, DynProvider};
 use anyhow::Result;
 use notify::RecommendedWatcher;
 use std::path::Path;
@@ -32,6 +32,18 @@ pub async fn start(config: SharedConfig, app_handle: AppHandle) -> Result<Daemon
         let mut p: Vec<DynProvider> = Vec::new();
         if cfg.nas.enabled && !cfg.nas.mount_path.is_empty() {
             p.push(Arc::new(NasProvider::new(&cfg.nas.mount_path)));
+        }
+        if cfg.s3.enabled && !cfg.s3.bucket.is_empty() {
+            match S3Provider::new(&cfg.s3.region, &cfg.s3.bucket, &cfg.s3.profile).await {
+                Ok(provider) => p.push(Arc::new(provider)),
+                Err(e) => eprintln!("[shadow] S3 init failed: {e}"),
+            }
+        }
+        if cfg.gcs.enabled && !cfg.gcs.bucket.is_empty() {
+            match GcsProvider::new(&cfg.gcs.bucket).await {
+                Ok(provider) => p.push(Arc::new(provider)),
+                Err(e) => eprintln!("[shadow] GCS init failed: {e}"),
+            }
         }
         p
     };

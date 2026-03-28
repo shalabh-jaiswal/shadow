@@ -2,6 +2,11 @@
 
 ## Completed Milestones
 
+### ✅ M2 — Core Daemon
+File watching, debouncing, blake3 hashing, upload queue with retry/backoff, NAS provider, IPC commands and events wired.
+
+---
+
 ### ✅ M1 — Scaffold
 Tauri 2 project init with Rust workspace, React + Tailwind CSS shell, IPC hello-world
 (one command, one event), GitHub Actions skeleton (builds on all 3 platforms), basic tray icon.
@@ -14,7 +19,7 @@ Tauri 2 project init with Rust workspace, React + Tailwind CSS shell, IPC hello-
 
 ---
 
-## Active: M2 — Core Daemon
+### ✅ M2 — Core Daemon
 
 ### Goal
 Implement the full file-watching and upload pipeline for NAS, end-to-end. This milestone
@@ -91,7 +96,7 @@ All emitted via `app_handle.emit()`:
 
 ---
 
-## M3 — Cloud Providers
+## Active: M3 — Cloud Providers
 
 ### Goal
 Add AWS S3 and Google Cloud Storage as fully working backup destinations with large-file support.
@@ -168,6 +173,10 @@ and complete tray icon behavior. User should be able to operate the app entirely
 - Save writes via `set_provider_config`
 
 **Settings screen:**
+- **Machine Name** — text field for `config.machine.name`. Shown with a helper note:
+  _"Used as the top-level prefix in all remote paths. Defaults to your OS hostname if left blank.
+  Set this to avoid leaking your real machine name to cloud storage."_
+  Save writes `machine.name` via a new `set_machine_name` IPC command (or via `set_daemon_config`).
 - Upload Workers (1–16), Debounce Window (50–5000ms), Follow Symlinks toggle,
   Launch at Login toggle, Log Level dropdown
 - Clear Hash Store button (danger, requires confirmation modal)
@@ -194,6 +203,7 @@ and complete tray icon behavior. User should be able to operate the app entirely
 - [ ] All four screens render without TypeScript errors (`npm run type-check` passes)
 - [ ] Activity feed updates in real time as files are backed up
 - [ ] Folder add/remove works end-to-end through the UI
+- [ ] Machine name can be set in Settings; remote paths immediately use the new name on next upload
 - [ ] Provider config can be saved and persists across restarts
 - [ ] Test Connection buttons work for all three providers
 - [ ] Tray icon tooltip reflects daemon state; window close does not stop the daemon
@@ -299,7 +309,7 @@ signing in CI, and ship signed installer artifacts as a GitHub Release.
 | # | Name | Key Deliverable | Status |
 |---|---|---|---|
 | M1 | Scaffold | CI green on all 3 platforms | ✅ Done |
-| M2 | Core Daemon | Files on NAS within 500ms | 🔲 Active |
+| M2 | Core Daemon | Files on NAS within 500ms | ✅ Done |
 | M3 | Cloud Providers | S3 + GCS multipart/resumable | 🔲 Pending |
 | M4 | Full UI | All 4 screens wired to IPC | 🔲 Pending |
 | M5 | Initial Scan | 10k-file folder fully backed up | 🔲 Pending |

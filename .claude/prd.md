@@ -337,24 +337,28 @@ paths = [
   "/Users/john/Projects"
 ]
 
-[providers.s3]
-enabled  = false
-bucket   = ""
-region   = "us-east-1"
-endpoint = ""                   # optional: custom endpoint (e.g. MinIO)
+[s3]
+enabled = false
+bucket  = ""
+region  = "us-east-1"
+profile = "shadow"              # named profile in ~/.aws/credentials
+prefix  = ""                    # optional key prefix
 
-[providers.gcs]
-enabled          = false
-bucket           = ""
-project_id       = ""
-credentials_path = ""           # optional: path to service account JSON file
+[gcs]
+enabled = false
+bucket  = ""
+prefix  = ""                    # optional key prefix
+# GCS auth uses GOOGLE_APPLICATION_CREDENTIALS env var (path to service account JSON)
 
-[providers.nas]
+[nas]
 enabled    = false
 mount_path = ""                 # e.g. /Volumes/MyNAS or Z:\Backup
 ```
 
-> **SECURITY NOTE:** No secrets (access keys, passwords, tokens) are ever written to config.toml. Cloud credentials are read from environment variables and standard credential chain locations at runtime only.
+> **SECURITY NOTE:** No secrets (access keys, passwords, tokens) are ever written to config.toml.
+> - **AWS:** credentials live in `~/.aws/credentials` under a named profile (default: `[shadow]`).
+> - **GCS:** set `GOOGLE_APPLICATION_CREDENTIALS` to the path of your service account JSON key file.
+> - **NAS:** no credentials required — access is via the OS-mounted filesystem.
 
 ### 8.3 Hash Registry — sled Embedded Database
 
@@ -393,20 +397,21 @@ pub struct DaemonConfig {
     pub log_level: String,           // default: "info"
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct S3Config {
     pub enabled: bool,
     pub bucket: String,
     pub region: String,
-    pub endpoint: Option<String>,
+    pub profile: String,   // named profile in ~/.aws/credentials
+    pub prefix: String,    // optional key prefix
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct GcsConfig {
     pub enabled: bool,
     pub bucket: String,
-    pub project_id: String,
-    pub credentials_path: Option<String>,
+    pub prefix: String,    // optional key prefix
+    // auth via GOOGLE_APPLICATION_CREDENTIALS env var
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -663,14 +668,15 @@ export interface S3Config {
   enabled: boolean;
   bucket: string;
   region: string;
-  endpoint: string;
+  profile: string;  // named profile in ~/.aws/credentials
+  prefix: string;
 }
 
 export interface GcsConfig {
   enabled: boolean;
   bucket: string;
-  project_id: string;
-  credentials_path: string;
+  prefix: string;
+  // auth via GOOGLE_APPLICATION_CREDENTIALS env var
 }
 
 export interface NasConfig {

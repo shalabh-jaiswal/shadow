@@ -10,4 +10,6 @@ pub trait BackupProvider: Send + Sync {
 
 pub type DynProvider = Arc<dyn BackupProvider>;
 
+pub mod gcs;
 pub mod nas;
+pub mod s3;

@@ -47,6 +47,7 @@ pub fn run() {
             ipc::remove_folder,
             ipc::get_watched_folders,
             ipc::test_provider,
+            ipc::set_provider_config,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -23,10 +23,19 @@ pub async fn start(
     let semaphore = Arc::new(Semaphore::new(workers));
     let providers = Arc::new(providers);
 
-    let host = hostname::get()
-        .unwrap_or_default()
-        .to_string_lossy()
-        .to_string();
+    // Use the user-configured machine name to avoid leaking the real hostname
+    // to cloud storage. Fall back to the OS hostname only when not configured.
+    let host = {
+        let name = config.read().await.machine.name.clone();
+        if name.is_empty() {
+            hostname::get()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string()
+        } else {
+            name
+        }
+    };
 
     while let Some(path) = rx.recv().await {
         match hasher::check_and_hash(&db, &path).await {

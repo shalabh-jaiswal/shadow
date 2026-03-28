@@ -1,6 +1,6 @@
-use crate::config;
+use crate::config::{self, GcsConfig, NasConfig, S3Config};
 use crate::daemon::watcher;
-use crate::providers::{nas::NasProvider, BackupProvider};
+use crate::providers::{gcs::GcsProvider, nas::NasProvider, s3::S3Provider, BackupProvider};
 use serde::Serialize;
 use std::path::Path;
 use tauri::{AppHandle, Emitter, State};
@@ -118,7 +118,67 @@ pub async fn test_provider(
             let provider = NasProvider::new(&cfg.nas.mount_path);
             provider.test_connection().await.map_err(|e| e.to_string())
         }
-        "s3" | "gcs" => Ok("not configured".into()),
+        "s3" => {
+            let (bucket, region, profile) = {
+                let daemon = state.0.lock().await;
+                let cfg = daemon.config.read().await;
+                if !cfg.s3.enabled || cfg.s3.bucket.is_empty() {
+                    return Err("S3 is not configured".into());
+                }
+                (cfg.s3.bucket.clone(), cfg.s3.region.clone(), cfg.s3.profile.clone())
+            };
+            let provider = S3Provider::new(&region, &bucket, &profile)
+                .await
+                .map_err(|e| e.to_string())?;
+            provider.test_connection().await.map_err(|e| e.to_string())
+        }
+        "gcs" => {
+            let bucket = {
+                let daemon = state.0.lock().await;
+                let cfg = daemon.config.read().await;
+                if !cfg.gcs.enabled || cfg.gcs.bucket.is_empty() {
+                    return Err("GCS is not configured".into());
+                }
+                cfg.gcs.bucket.clone()
+            };
+            let provider = GcsProvider::new(&bucket)
+                .await
+                .map_err(|e| e.to_string())?;
+            provider.test_connection().await.map_err(|e| e.to_string())
+        }
         _ => Err(format!("unknown provider: {provider_name}")),
     }
+}
+
+/// Update and persist a provider's configuration block.
+/// The running daemon continues using its current providers until the app restarts.
+#[tauri::command]
+pub async fn set_provider_config(
+    provider: String,
+    config_json: String,
+    state: State<'_, DaemonHandle>,
+) -> Result<(), String> {
+    let daemon = state.0.lock().await;
+    let mut cfg = daemon.config.write().await;
+
+    match provider.to_lowercase().as_str() {
+        "s3" => {
+            let s3: S3Config =
+                serde_json::from_str(&config_json).map_err(|e| e.to_string())?;
+            cfg.s3 = s3;
+        }
+        "gcs" => {
+            let gcs: GcsConfig =
+                serde_json::from_str(&config_json).map_err(|e| e.to_string())?;
+            cfg.gcs = gcs;
+        }
+        "nas" => {
+            let nas: NasConfig =
+                serde_json::from_str(&config_json).map_err(|e| e.to_string())?;
+            cfg.nas = nas;
+        }
+        _ => return Err(format!("unknown provider: {provider}")),
+    }
+
+    config::save(&cfg).map_err(|e| e.to_string())
 }
