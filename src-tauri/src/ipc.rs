@@ -23,6 +23,9 @@ pub fn emit_file_event(app_handle: &AppHandle, event: &str, payload: FileEvent) 
 pub struct FolderStatus {
     pub path: String,
     pub status: String,
+    /// Unix timestamp in milliseconds of the last successful upload from this folder.
+    /// `None` means no file has been backed up from this folder yet.
+    pub last_backup: Option<u64>,
 }
 
 #[tauri::command]
@@ -99,9 +102,19 @@ pub async fn get_watched_folders(
         .watched_folders
         .paths
         .iter()
-        .map(|p| FolderStatus {
-            path: p.clone(),
-            status: "active".into(),
+        .map(|p| {
+            let last_backup = {
+                let key = format!("last_backup:{p}");
+                daemon.db.get(key.as_bytes())
+                    .ok()
+                    .flatten()
+                    .and_then(|v| v.as_ref().try_into().ok().map(u64::from_le_bytes))
+            };
+            FolderStatus {
+                path: p.clone(),
+                status: "active".into(),
+                last_backup,
+            }
         })
         .collect();
     Ok(folders)

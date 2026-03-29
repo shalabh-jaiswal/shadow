@@ -1,4 +1,5 @@
 use serde::Serialize;
+use sled::Db;
 use std::sync::{Arc, Mutex};
 
 /// Point-in-time snapshot serialized and sent to the frontend via `get_stats`.
@@ -23,9 +24,38 @@ struct Inner {
 #[derive(Clone, Debug, Default)]
 pub struct DaemonStats(Arc<Mutex<Inner>>);
 
+fn read_u64(db: &Db, key: &[u8]) -> u64 {
+    db.get(key)
+        .ok()
+        .flatten()
+        .and_then(|v| v.as_ref().try_into().ok().map(u64::from_le_bytes))
+        .unwrap_or(0)
+}
+
+const SLED_KEY_FILES: &[u8] = b"__stats__files_uploaded";
+const SLED_KEY_BYTES: &[u8] = b"__stats__bytes_uploaded";
+
 impl DaemonStats {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Load persisted counters from sled, returning a populated instance.
+    pub fn load(db: &Db) -> Self {
+        let files = read_u64(db, SLED_KEY_FILES);
+        let bytes = read_u64(db, SLED_KEY_BYTES);
+        Self(Arc::new(Mutex::new(Inner {
+            files_uploaded: files,
+            bytes_uploaded: bytes,
+            active_uploads: 0,
+        })))
+    }
+
+    /// Persist current counters to sled. Call after each successful upload.
+    pub fn persist(&self, db: &Db) {
+        let g = self.0.lock().unwrap();
+        let _ = db.insert(SLED_KEY_FILES, &g.files_uploaded.to_le_bytes());
+        let _ = db.insert(SLED_KEY_BYTES, &g.bytes_uploaded.to_le_bytes());
     }
 
     /// Record that one file was successfully uploaded to all providers.

@@ -1,4 +1,12 @@
 import { useEffect, useState } from 'react';
+
+function relativeTime(ts: number): string {
+  const diff = Date.now() - ts;
+  if (diff < 60_000) return 'just now';
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
+  return `${Math.floor(diff / 86_400_000)}d ago`;
+}
 import { open } from '@tauri-apps/plugin-dialog';
 import { useFoldersStore } from '../../store/foldersStore';
 import { useScanProgress } from '../../hooks/useScanProgress';
@@ -126,7 +134,7 @@ export function Folders() {
                       )}
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">
-                      Never
+                      {folder.last_backup ? relativeTime(folder.last_backup) : 'Never'}
                     </td>
                     <td className="px-6 py-4 text-right text-sm">
                       <button

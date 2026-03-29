@@ -50,6 +50,8 @@ export interface AppConfig {
 export interface FolderStatus {
   path: string;
   status: string;
+  /** Unix timestamp in milliseconds of the last successful upload. Null if never. */
+  last_backup: number | null;
 }
 
 export interface FileEvent {

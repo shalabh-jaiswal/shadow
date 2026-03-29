@@ -71,6 +71,7 @@ pub async fn start(
                 let path = path.clone();
                 let host = host.clone();
                 let stats = stats.clone();
+                let config = Arc::clone(&config);
 
                 tokio::spawn(async move {
                     let _permit = permit.acquire().await.unwrap();
@@ -143,8 +144,19 @@ pub async fn start(
 
                     if all_ok {
                         stats.record_upload(file_bytes);
+                        stats.persist(&db);
                         if let Err(e) = hasher::record_hash(&db, &path, hash) {
                             eprintln!("[shadow] failed to record hash for {}: {e}", path.display());
+                        }
+                        // Record last-backup timestamp for the parent watched folder.
+                        // Key format: "last_backup:<folder_path>"
+                        let ts = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis() as u64;
+                        if let Some(folder) = watched_folder_for(&path, &config).await {
+                            let key = format!("last_backup:{folder}");
+                            let _ = db.insert(key.as_bytes(), &ts.to_le_bytes());
                         }
                     }
                 });
@@ -154,6 +166,17 @@ pub async fn start(
             }
         }
     }
+}
+
+/// Return the watched folder path that is the longest prefix of `path`.
+async fn watched_folder_for(path: &Path, config: &SharedConfig) -> Option<String> {
+    let cfg = config.read().await;
+    cfg.watched_folders
+        .paths
+        .iter()
+        .filter(|f| path.starts_with(f.as_str()))
+        .max_by_key(|f| f.len())
+        .cloned()
 }
 
 async fn upload_with_retry(

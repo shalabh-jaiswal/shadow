@@ -34,7 +34,7 @@ pub async fn start(config: SharedConfig, app_handle: AppHandle) -> Result<Daemon
     let (upload_tx, upload_rx) = mpsc::channel::<std::path::PathBuf>(512);
 
     let db = hasher::open_db()?;
-    let stats = DaemonStats::new();
+    let stats = DaemonStats::load(&db);
 
     // Build provider list from config
     let providers: Vec<DynProvider> = {
