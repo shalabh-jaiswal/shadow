@@ -54,6 +54,7 @@ pub struct DaemonConfig {
     pub upload_workers: usize,
     pub log_level: String,
     pub follow_symlinks: bool,
+    pub start_on_login: bool,
 }
 
 impl Default for DaemonConfig {
@@ -63,6 +64,7 @@ impl Default for DaemonConfig {
             upload_workers: 4,
             log_level: "info".into(),
             follow_symlinks: false,
+            start_on_login: false,
         }
     }
 }

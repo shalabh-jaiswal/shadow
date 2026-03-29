@@ -6,6 +6,11 @@
   "permissions": [
     "core:default",
     "core:tray:default",
-    "dialog:allow-open"
+    "dialog:allow-open",
+    "autostart:allow-enable",
+    "autostart:allow-disable",
+    "autostart:allow-is-enabled",
+    "updater:allow-check",
+    "updater:allow-download-and-install"
   ]
 }

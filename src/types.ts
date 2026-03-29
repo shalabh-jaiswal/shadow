@@ -7,6 +7,7 @@ export interface DaemonConfig {
   upload_workers: number;
   log_level: string;
   follow_symlinks: boolean;
+  start_on_login: boolean;
 }
 
 export interface MachineConfig {

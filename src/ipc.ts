@@ -46,6 +46,18 @@ export const ipc = {
 
   clearHashStore: (): Promise<void> =>
     invoke<void>('clear_hash_store'),
+
+  setPaused: (paused: boolean): Promise<void> =>
+    invoke<void>('set_paused', { paused }),
+
+  getPaused: (): Promise<boolean> =>
+    invoke<boolean>('get_paused'),
+
+  setAutostart: (enabled: boolean): Promise<void> =>
+    invoke<void>('set_autostart', { enabled }),
+
+  checkForUpdates: (): Promise<string | null> =>
+    invoke<string | null>('check_for_updates'),
 } as const;
 
 // ── Provider config helpers ───────────────────────────────────────────────────

@@ -11,7 +11,7 @@ use anyhow::Result;
 use notify::RecommendedWatcher;
 use sled::Db;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{atomic::AtomicBool, Arc};
 use tauri::AppHandle;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
@@ -28,6 +28,8 @@ pub struct DaemonState {
     pub db: Db,
     /// Live upload counters exposed via `get_stats`.
     pub stats: DaemonStats,
+    /// Atomic flag to pause/resume backup processing.
+    pub paused: Arc<AtomicBool>,
 }
 
 pub async fn start(config: SharedConfig, app_handle: AppHandle) -> Result<DaemonState> {
@@ -35,6 +37,7 @@ pub async fn start(config: SharedConfig, app_handle: AppHandle) -> Result<Daemon
 
     let db = hasher::open_db()?;
     let stats = DaemonStats::load(&db);
+    let paused = Arc::new(AtomicBool::new(false));
 
     // Build provider list from config
     let providers: Vec<DynProvider> = {
@@ -75,7 +78,8 @@ pub async fn start(config: SharedConfig, app_handle: AppHandle) -> Result<Daemon
     // Spawn debouncer
     let debouncer_handle = {
         let config = config.clone();
-        tokio::spawn(debouncer::start(watcher_rx, upload_tx.clone(), config))
+        let paused_ref = paused.clone();
+        tokio::spawn(debouncer::start(watcher_rx, upload_tx.clone(), config, paused_ref))
     };
 
     // Create notify watcher
@@ -102,6 +106,7 @@ pub async fn start(config: SharedConfig, app_handle: AppHandle) -> Result<Daemon
         watcher: Some(notify_watcher),
         db,
         stats,
+        paused,
     })
 }
 

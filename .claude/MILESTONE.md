@@ -317,4 +317,4 @@ signing in CI, and ship signed installer artifacts as a GitHub Release.
 | M3 | Cloud Providers | S3 + GCS multipart/resumable | ✅ Done |
 | M4 | Full UI | All 4 screens wired to IPC | ✅ Done |
 | M5 | Initial Scan | 10k-file folder fully backed up | ✅ Done |
-| M6 | Polish & Release | Signed installers on GitHub Releases | 🔲 Pending |
+| M6 | Polish & Release | Unsigned installers on GitHub Releases | ✅ Done |

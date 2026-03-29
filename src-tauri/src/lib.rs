@@ -7,7 +7,7 @@ mod providers;
 use daemon::DaemonState;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tokio::sync::Mutex;
 
 pub struct DaemonHandle(pub Mutex<DaemonState>);
@@ -17,26 +17,49 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, None))
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
-            // Tray menu: Open Shadow | --- | Quit
-            let show = MenuItem::with_id(app, "show", "Open Shadow", true, None::<&str>)?;
+            // Tray menu: Show Window | Pause Backup | --- | Quit Shadow
+            let show = MenuItem::with_id(app, "show", "Show Window", true, None::<&str>)?;
+            let pause = MenuItem::with_id(app, "pause", "Pause Backup", true, None::<&str>)?;
             let sep = PredefinedMenuItem::separator(app)?;
-            let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show, &sep, &quit])?;
+            let quit = MenuItem::with_id(app, "quit", "Quit Shadow", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&show, &pause, &sep, &quit])?;
 
-            TrayIconBuilder::new()
+            TrayIconBuilder::with_id("main")
                 .icon(app.default_window_icon().unwrap().clone())
                 .tooltip("Shadow")
                 .menu(&menu)
-                .on_menu_event(|app, event| match event.id.as_ref() {
-                    "show" => {
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.set_focus();
+                .on_menu_event(move |app, event| {
+                    let app_handle = app.clone();
+                    tauri::async_runtime::spawn(async move {
+                        match event.id.as_ref() {
+                            "show" => {
+                                if let Some(window) = app_handle.get_webview_window("main") {
+                                    let _ = window.show();
+                                    let _ = window.set_focus();
+                                }
+                            }
+                            "pause" => {
+                                // Toggle pause state
+                                if let Some(state) = app_handle.try_state::<DaemonHandle>() {
+                                    let daemon = state.0.lock().await;
+                                    let current_paused = daemon.paused.load(std::sync::atomic::Ordering::Relaxed);
+                                    daemon.paused.store(!current_paused, std::sync::atomic::Ordering::Relaxed);
+
+                                    // Emit appropriate event
+                                    if !current_paused {
+                                        let _ = app_handle.emit("daemon_paused", ());
+                                    } else {
+                                        let _ = app_handle.emit("daemon_resumed", ());
+                                    }
+                                }
+                            }
+                            "quit" => app_handle.exit(0),
+                            _ => {}
                         }
-                    }
-                    "quit" => app.exit(0),
-                    _ => {}
+                    });
                 })
                 .build(app)?;
 
@@ -69,6 +92,10 @@ pub fn run() {
             ipc::set_daemon_config,
             ipc::get_stats,
             ipc::clear_hash_store,
+            ipc::set_paused,
+            ipc::get_paused,
+            ipc::set_autostart,
+            ipc::check_for_updates,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

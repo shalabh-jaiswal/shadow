@@ -4,6 +4,7 @@ use crate::daemon::watcher;
 use crate::providers::{gcs::GcsProvider, nas::NasProvider, s3::S3Provider, BackupProvider};
 use serde::Serialize;
 use std::path::Path;
+use std::sync::atomic::Ordering;
 use tauri::{AppHandle, Emitter, State};
 
 use crate::DaemonHandle;
@@ -237,4 +238,61 @@ pub async fn clear_hash_store(state: State<'_, DaemonHandle>) -> Result<(), Stri
     let daemon = state.0.lock().await;
     daemon.db.clear().map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/// Set whether backup is paused.
+#[tauri::command]
+pub async fn set_paused(
+    paused: bool,
+    state: State<'_, DaemonHandle>,
+    app_handle: AppHandle,
+) -> Result<(), String> {
+    let daemon = state.0.lock().await;
+    daemon.paused.store(paused, Ordering::Relaxed);
+
+    // Emit events for frontend and tray menu updates
+    if paused {
+        let _ = app_handle.emit("daemon_paused", ());
+    } else {
+        let _ = app_handle.emit("daemon_resumed", ());
+    }
+
+    Ok(())
+}
+
+/// Get current paused state.
+#[tauri::command]
+pub async fn get_paused(state: State<'_, DaemonHandle>) -> Result<bool, String> {
+    let daemon = state.0.lock().await;
+    Ok(daemon.paused.load(Ordering::Relaxed))
+}
+
+/// Enable or disable autostart on login.
+#[tauri::command]
+pub async fn set_autostart(
+    enabled: bool,
+    state: State<'_, DaemonHandle>,
+    app: AppHandle,
+) -> Result<(), String> {
+    use tauri_plugin_autostart::ManagerExt;
+    if enabled {
+        app.autolaunch().enable().map_err(|e| e.to_string())?;
+    } else {
+        app.autolaunch().disable().map_err(|e| e.to_string())?;
+    }
+
+    // Save to config
+    let daemon = state.0.lock().await;
+    let mut cfg = daemon.config.write().await;
+    cfg.daemon.start_on_login = enabled;
+    crate::config::save(&cfg).map_err(|e| e.to_string())
+}
+
+/// Check for updates. Returns the version string if an update is available, null otherwise.
+#[tauri::command]
+pub async fn check_for_updates(app: AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_updater::UpdaterExt;
+    let updater = app.updater().map_err(|e| e.to_string())?;
+    let update = updater.check().await.map_err(|e| e.to_string())?;
+    Ok(update.map(|u| u.version.to_string()))
 }

@@ -73,6 +73,8 @@ export function Settings() {
   const [showClearModal, setShowClearModal] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState<string | null>(null);
 
   useEffect(() => {
     loadConfig();
@@ -111,6 +113,34 @@ export function Settings() {
       setError(String(e));
     } finally {
       setIsClearing(false);
+    }
+  };
+
+  const checkForUpdates = async () => {
+    setIsCheckingUpdates(true);
+    setUpdateStatus(null);
+    setError(null);
+    try {
+      const newVersion = await ipc.checkForUpdates();
+      if (newVersion) {
+        setUpdateStatus(`Version ${newVersion} available`);
+      } else {
+        setUpdateStatus('Up to date');
+      }
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setIsCheckingUpdates(false);
+    }
+  };
+
+  const toggleAutostart = async (enabled: boolean) => {
+    try {
+      await ipc.setAutostart(enabled);
+      updateDaemon({ start_on_login: enabled });
+      setError(null);
+    } catch (e) {
+      setError(String(e));
     }
   };
 
@@ -167,6 +197,40 @@ export function Settings() {
             placeholder="Leave empty to use OS hostname"
             description="Used in remote backup paths to identify this machine"
           />
+        </div>
+      </div>
+
+      <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+          Application Settings
+        </h2>
+        <div className="space-y-6">
+          <div className="flex items-center">
+            <input
+              type="checkbox"
+              checked={config.daemon.start_on_login}
+              onChange={(e) => toggleAutostart(e.target.checked)}
+              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+            />
+            <label className="ml-2 block text-sm text-gray-700 dark:text-gray-300">
+              Launch at login
+            </label>
+          </div>
+
+          <div>
+            <button
+              onClick={checkForUpdates}
+              disabled={isCheckingUpdates}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+            >
+              {isCheckingUpdates ? 'Checking...' : 'Check for Updates'}
+            </button>
+            {updateStatus && (
+              <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                {updateStatus}
+              </p>
+            )}
+          </div>
         </div>
       </div>
 

@@ -37,5 +37,13 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/YOUR_GITHUB_USERNAME/shadow/releases/latest/download/latest.json"
+      ],
+      "pubkey": ""
+    }
   }
 }

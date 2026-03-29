@@ -25,6 +25,8 @@ tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-shell = "2"
 tauri-plugin-opener = "2"
+tauri-plugin-autostart = "2"
+tauri-plugin-updater = "2"
 notify = "6"
 blake3 = "1"
 sled = "0.34"
