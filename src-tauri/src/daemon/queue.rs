@@ -148,8 +148,9 @@ pub async fn start(
                         if let Err(e) = hasher::record_hash(&db, &path, hash) {
                             eprintln!("[shadow] failed to record hash for {}: {e}", path.display());
                         }
-                        // Record last-backup timestamp for the parent watched folder.
-                        // Key format: "last_backup:<folder_path>"
+                        // Record last-backup timestamp for the parent watched folder,
+                        // then emit folder_updated so the frontend re-fetches AFTER
+                        // the sled write is complete (avoids the file_uploaded race).
                         let ts = std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
                             .unwrap_or_default()
@@ -157,6 +158,7 @@ pub async fn start(
                         if let Some(folder) = watched_folder_for(&path, &config).await {
                             let key = format!("last_backup:{folder}");
                             let _ = db.insert(key.as_bytes(), &ts.to_le_bytes());
+                            let _ = app_handle.emit("folder_updated", serde_json::json!({ "folder": folder }));
                         }
                     }
                 });
@@ -171,12 +173,13 @@ pub async fn start(
 /// Return the watched folder path that is the longest prefix of `path`.
 async fn watched_folder_for(path: &Path, config: &SharedConfig) -> Option<String> {
     let cfg = config.read().await;
-    cfg.watched_folders
+    let result = cfg.watched_folders
         .paths
         .iter()
         .filter(|f| path.starts_with(f.as_str()))
         .max_by_key(|f| f.len())
-        .cloned()
+        .cloned();
+    result
 }
 
 async fn upload_with_retry(

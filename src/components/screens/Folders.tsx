@@ -15,7 +15,7 @@ import { ConfirmModal } from '../shared/ConfirmModal';
 
 
 export function Folders() {
-  const { folders, isLoading, error, fetchFolders, addFolder, removeFolder, scanProgress } = useFoldersStore();
+  const { folders, isLoading, error, fetchFolders, addFolder, removeFolder, scanProgress, setLastBackup } = useFoldersStore();
   const [removePath, setRemovePath] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
 
@@ -26,11 +26,13 @@ export function Folders() {
     fetchFolders();
   }, [fetchFolders]);
 
-  // Re-fetch folder list when any file is uploaded so last_backup updates live.
+  // Update last_backup in store directly when folder_updated fires.
   useEffect(() => {
-    const unlisten = listen('file_uploaded', () => fetchFolders());
+    const unlisten = listen<{ folder: string }>('folder_updated', (e) => {
+      setLastBackup(e.payload.folder, Date.now());
+    });
     return () => { unlisten.then((fn) => fn()); };
-  }, [fetchFolders]);
+  }, [setLastBackup]);
 
   const handleAddFolder = async () => {
     setIsAdding(true);

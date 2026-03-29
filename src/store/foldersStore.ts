@@ -12,6 +12,7 @@ interface FoldersState {
   removeFolder: (path: string) => Promise<void>;
   setScanProgress: (folder: string, pct: number) => void;
   clearScanProgress: (folder: string) => void;
+  setLastBackup: (folderPath: string, ts: number) => void;
 }
 
 export const useFoldersStore = create<FoldersState>((set) => ({
@@ -56,4 +57,11 @@ export const useFoldersStore = create<FoldersState>((set) => ({
       delete newProgress[folder];
       return { scanProgress: newProgress };
     }),
+
+  setLastBackup: (folderPath, ts) =>
+    set((state) => ({
+      folders: state.folders.map((f) =>
+        f.path === folderPath ? { ...f, last_backup: ts } : f
+      ),
+    })),
 }));
