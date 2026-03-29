@@ -54,6 +54,7 @@ pub struct DaemonConfig {
     pub upload_workers: usize,
     pub log_level: String,
     pub follow_symlinks: bool,
+    #[serde(default)]
     pub start_on_login: bool,
 }
 
