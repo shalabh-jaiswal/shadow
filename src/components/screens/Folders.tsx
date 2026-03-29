@@ -8,6 +8,7 @@ function relativeTime(ts: number): string {
   return `${Math.floor(diff / 86_400_000)}d ago`;
 }
 import { open } from '@tauri-apps/plugin-dialog';
+import { listen } from '@tauri-apps/api/event';
 import { useFoldersStore } from '../../store/foldersStore';
 import { useScanProgress } from '../../hooks/useScanProgress';
 import { ConfirmModal } from '../shared/ConfirmModal';
@@ -23,6 +24,12 @@ export function Folders() {
 
   useEffect(() => {
     fetchFolders();
+  }, [fetchFolders]);
+
+  // Re-fetch folder list when any file is uploaded so last_backup updates live.
+  useEffect(() => {
+    const unlisten = listen('file_uploaded', () => fetchFolders());
+    return () => { unlisten.then((fn) => fn()); };
   }, [fetchFolders]);
 
   const handleAddFolder = async () => {
