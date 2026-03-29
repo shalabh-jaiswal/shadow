@@ -5,54 +5,73 @@ allowed-tools:
   - Edit
 ---
 
-# Cut a Release: $1
+# Release: $1
 
-Create and push a release tag for version $1 (format: v1.2.3).
+Cut a new release of Shadow at version $1 (format: v1.2.3).
 
 ## Pre-Release Checklist
 
 1. **Verify branch and cleanliness**
-   ```bash
-   git branch --show-current   # must be 'main'
-   git status                  # must be clean
-   git log --oneline -5        # review recent commits
-   ```
+```bash
+   git branch --show-current      # confirm you are on main
+   git status                     # must be clean, no uncommitted changes
+   git log --oneline -5           # review recent commits look sane
+```
+Stop if anything is dirty.
 
-2. **Run all quality gates**
-   ```bash
+2. **Run full quality gates**
+```bash
    cargo fmt --manifest-path src-tauri/Cargo.toml --check
    cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
    cargo test --manifest-path src-tauri/Cargo.toml
    npm run type-check
    npm run lint
-   ```
-   **Stop if anything fails.**
+```
+Stop if anything fails. Fix before proceeding.
 
 3. **Bump version in tauri.conf.json**
-   Open `src-tauri/tauri.conf.json` and update the `"version"` field to match $1 (without the `v` prefix).
+   Open `src-tauri/tauri.conf.json` and change:
+```json
+   "version": "X.Y.Z"
+```
+to match $1 without the `v` prefix.
 
-4. **Commit the version bump**
-   ```bash
-   git add src-tauri/tauri.conf.json
+4. **Update MILESTONE.md**
+   Mark the current milestone complete with today's date.
+
+5. **Commit the version bump**
+```bash
+   git add src-tauri/tauri.conf.json .claude/MILESTONE.md
    git commit -m "chore: bump version to $1"
-   ```
+```
 
-5. **Create the tag**
-   ```bash
+6. **Create the tag**
+```bash
    git tag $1
-   ```
+```
 
-6. **Push commit and tag together**
-   ```bash
+7. **Push commit and tag together**
+```bash
    git push origin main --follow-tags
-   ```
+```
 
-7. **Confirm GitHub Actions triggered**
-   - Visit `https://github.com/<owner>/shadow/actions`
-   - Verify the release workflow is running for tag $1
-   - Three jobs should appear: build-macos, build-windows, build-linux
+8. **Confirm GitHub Actions triggered**
+   Print this URL for the user to check:
+```
+   https://github.com/<owner>/shadow/actions
+```
+Three jobs should appear simultaneously:
+- build-macos
+- build-windows
+- build-linux
 
-## After the Release
-- Monitor the Actions run for any failures
-- Once complete, check the GitHub Releases page for the new release artifacts
-- Verify `.dmg`, `.exe`/`.msi`, and `.AppImage`/`.deb` are all attached
+After all three pass, publish-release creates the GitHub Release
+with installers attached.
+
+## Notes
+- No code signing — users will see OS security warnings on first install
+- macOS bypass: right-click app → Open → Open
+- Windows bypass: More info → Run anyway
+- Installers are unsigned but fully functional
+- Auto-updater will notify existing users of the new version
+```
