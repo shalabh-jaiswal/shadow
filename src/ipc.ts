@@ -1,55 +1,83 @@
-import { invoke } from "@tauri-apps/api/core";
-import type { FolderStatus, GcsConfig, NasConfig, S3Config } from "./types";
+import { invoke } from '@tauri-apps/api/core';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import type {
+  AppConfig,
+  DaemonConfig,
+  DaemonStats,
+  FileEvent,
+  FolderStatus,
+  GcsConfig,
+  MachineConfig,
+  NasConfig,
+  ProviderStatusEvent,
+  S3Config,
+} from './types';
 
-export async function ping(): Promise<string> {
-  return invoke<string>("ping");
-}
+// ── Commands ──────────────────────────────────────────────────────────────────
+// All Tauri invoke() calls live here — never call invoke() directly in components.
 
-export async function addFolder(path: string): Promise<void> {
-  return invoke<void>("add_folder", { path });
-}
+export const ipc = {
+  ping: (): Promise<string> =>
+    invoke<string>('ping'),
 
-export async function removeFolder(path: string): Promise<void> {
-  return invoke<void>("remove_folder", { path });
-}
+  addFolder: (path: string): Promise<void> =>
+    invoke<void>('add_folder', { path }),
 
-export async function getWatchedFolders(): Promise<FolderStatus[]> {
-  return invoke<FolderStatus[]>("get_watched_folders");
-}
+  removeFolder: (path: string): Promise<void> =>
+    invoke<void>('remove_folder', { path }),
 
-/**
- * Test connectivity to a configured provider.
- * @param providerName - "s3" | "gcs" | "nas"
- * @returns A human-readable success message, or throws on failure.
- */
-export async function testProvider(providerName: string): Promise<string> {
-  return invoke<string>("test_provider", { providerName });
-}
+  getWatchedFolders: (): Promise<FolderStatus[]> =>
+    invoke<FolderStatus[]>('get_watched_folders'),
 
-/**
- * Persist an updated provider config block to config.toml.
- * The running daemon will pick up the change on next app restart.
- * @param provider - "s3" | "gcs" | "nas"
- * @param config   - The config object for that provider
- */
-export async function setProviderConfig(
-  provider: "s3",
-  config: S3Config,
-): Promise<void>;
-export async function setProviderConfig(
-  provider: "gcs",
-  config: GcsConfig,
-): Promise<void>;
-export async function setProviderConfig(
-  provider: "nas",
-  config: NasConfig,
-): Promise<void>;
-export async function setProviderConfig(
-  provider: string,
-  config: S3Config | GcsConfig | NasConfig,
-): Promise<void> {
-  return invoke<void>("set_provider_config", {
-    provider,
-    configJson: JSON.stringify(config),
-  });
-}
+  testProvider: (providerName: string): Promise<string> =>
+    invoke<string>('test_provider', { providerName }),
+
+  setProviderConfig: (provider: string, configJson: string): Promise<void> =>
+    invoke<void>('set_provider_config', { provider, configJson }),
+
+  getConfig: (): Promise<AppConfig> =>
+    invoke<AppConfig>('get_config'),
+
+  setDaemonConfig: (daemon: DaemonConfig, machine: MachineConfig): Promise<void> =>
+    invoke<void>('set_daemon_config', { daemon, machine }),
+
+  getStats: (): Promise<DaemonStats> =>
+    invoke<DaemonStats>('get_stats'),
+
+  clearHashStore: (): Promise<void> =>
+    invoke<void>('clear_hash_store'),
+} as const;
+
+// ── Provider config helpers ───────────────────────────────────────────────────
+
+export const providerConfig = {
+  saveS3: (cfg: S3Config) => ipc.setProviderConfig('s3', JSON.stringify(cfg)),
+  saveGcs: (cfg: GcsConfig) => ipc.setProviderConfig('gcs', JSON.stringify(cfg)),
+  saveNas: (cfg: NasConfig) => ipc.setProviderConfig('nas', JSON.stringify(cfg)),
+} as const;
+
+// ── Event subscriptions ───────────────────────────────────────────────────────
+// Each helper returns a Promise<UnlistenFn>. Call the unlisten function on cleanup.
+
+export const events = {
+  onFileQueued: (cb: (e: FileEvent) => void): Promise<UnlistenFn> =>
+    listen<FileEvent>('file_queued', (e) => cb(e.payload)),
+
+  onFileUploading: (cb: (e: FileEvent) => void): Promise<UnlistenFn> =>
+    listen<FileEvent>('file_uploading', (e) => cb(e.payload)),
+
+  onFileUploaded: (cb: (e: FileEvent) => void): Promise<UnlistenFn> =>
+    listen<FileEvent>('file_uploaded', (e) => cb(e.payload)),
+
+  onFileSkipped: (cb: (e: FileEvent) => void): Promise<UnlistenFn> =>
+    listen<FileEvent>('file_skipped', (e) => cb(e.payload)),
+
+  onFileError: (cb: (e: FileEvent) => void): Promise<UnlistenFn> =>
+    listen<FileEvent>('file_error', (e) => cb(e.payload)),
+
+  onFileFailed: (cb: (e: FileEvent) => void): Promise<UnlistenFn> =>
+    listen<FileEvent>('file_failed', (e) => cb(e.payload)),
+
+  onProviderStatus: (cb: (e: ProviderStatusEvent) => void): Promise<UnlistenFn> =>
+    listen<ProviderStatusEvent>('provider_status', (e) => cb(e.payload)),
+} as const;

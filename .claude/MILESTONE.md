@@ -96,7 +96,11 @@ All emitted via `app_handle.emit()`:
 
 ---
 
-## Active: M3 — Cloud Providers
+## Active: M6 — Polish & Release
+
+---
+
+## Completed: M3 — Cloud Providers
 
 ### Goal
 Add AWS S3 and Google Cloud Storage as fully working backup destinations with large-file support.
@@ -310,7 +314,7 @@ signing in CI, and ship signed installer artifacts as a GitHub Release.
 |---|---|---|---|
 | M1 | Scaffold | CI green on all 3 platforms | ✅ Done |
 | M2 | Core Daemon | Files on NAS within 500ms | ✅ Done |
-| M3 | Cloud Providers | S3 + GCS multipart/resumable | 🔲 Pending |
-| M4 | Full UI | All 4 screens wired to IPC | 🔲 Pending |
-| M5 | Initial Scan | 10k-file folder fully backed up | 🔲 Pending |
+| M3 | Cloud Providers | S3 + GCS multipart/resumable | ✅ Done |
+| M4 | Full UI | All 4 screens wired to IPC | ✅ Done |
+| M5 | Initial Scan | 10k-file folder fully backed up | ✅ Done |
 | M6 | Polish & Release | Signed installers on GitHub Releases | 🔲 Pending |

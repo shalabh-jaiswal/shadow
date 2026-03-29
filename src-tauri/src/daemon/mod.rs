@@ -1,17 +1,22 @@
 pub mod debouncer;
 pub mod hasher;
 pub mod queue;
+pub mod scanner;
+pub mod stats;
 pub mod watcher;
 
 use crate::config::SharedConfig;
 use crate::providers::{gcs::GcsProvider, nas::NasProvider, s3::S3Provider, DynProvider};
 use anyhow::Result;
 use notify::RecommendedWatcher;
-use std::path::Path;
+use sled::Db;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tauri::AppHandle;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
+
+pub use stats::DaemonStats;
 
 pub struct DaemonState {
     pub config: SharedConfig,
@@ -19,12 +24,17 @@ pub struct DaemonState {
     pub upload_tx: mpsc::Sender<std::path::PathBuf>,
     pub task_handles: Vec<JoinHandle<()>>,
     pub watcher: Option<RecommendedWatcher>,
+    /// Sled hash database — exposed so `clear_hash_store` IPC command can flush it.
+    pub db: Db,
+    /// Live upload counters exposed via `get_stats`.
+    pub stats: DaemonStats,
 }
 
 pub async fn start(config: SharedConfig, app_handle: AppHandle) -> Result<DaemonState> {
     let (upload_tx, upload_rx) = mpsc::channel::<std::path::PathBuf>(512);
 
     let db = hasher::open_db()?;
+    let stats = DaemonStats::new();
 
     // Build provider list from config
     let providers: Vec<DynProvider> = {
@@ -53,7 +63,10 @@ pub async fn start(config: SharedConfig, app_handle: AppHandle) -> Result<Daemon
         let db = db.clone();
         let config = config.clone();
         let app_handle = app_handle.clone();
-        tokio::spawn(queue::start(upload_rx, providers, db, config, app_handle))
+        let stats = stats.clone();
+        tokio::spawn(queue::start(
+            upload_rx, providers, db, config, app_handle, stats,
+        ))
     };
 
     // Create watcher → debouncer channel
@@ -87,6 +100,8 @@ pub async fn start(config: SharedConfig, app_handle: AppHandle) -> Result<Daemon
         upload_tx,
         task_handles: vec![queue_handle, debouncer_handle],
         watcher: Some(notify_watcher),
+        db,
+        stats,
     })
 }
 
@@ -105,4 +120,18 @@ pub async fn shutdown(mut state: DaemonState) -> Result<()> {
     }
 
     Ok(())
+}
+
+impl DaemonState {
+    /// Spawn a background scan for the given folder path.
+    /// Files with no sled entry are enqueued for upload.
+    pub fn spawn_scan(&self, folder_path: PathBuf) {
+        scanner::spawn_scan(
+            folder_path,
+            self.config.clone(),
+            self.db.clone(),
+            self.upload_tx.clone(),
+            self.app_handle.clone(),
+        );
+    }
 }

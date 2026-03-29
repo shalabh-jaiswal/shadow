@@ -9,7 +9,9 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "jsx": "react-jsx",
-    "baseUrl": "."
+    "baseUrl": ".",
+    "types": ["node", "vite/client"],
+    "skipLibCheck": true
   },
   "include": ["src"]
 }

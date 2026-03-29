@@ -2,7 +2,6 @@ use crate::providers::BackupProvider;
 use anyhow::{Context, Result};
 use google_cloud_auth::credentials::CredentialsFile;
 use google_cloud_storage::client::{Client, ClientConfig};
-use google_cloud_storage::http::buckets::get::GetBucketRequest;
 use google_cloud_storage::http::objects::upload::{Media, UploadObjectRequest, UploadType};
 use google_cloud_storage::http::objects::Object;
 use std::path::Path;
@@ -23,9 +22,7 @@ impl GcsProvider {
     pub async fn new(bucket: &str, credentials_path: &str) -> Result<Self> {
         let creds: CredentialsFile = CredentialsFile::new_from_file(credentials_path.to_string())
             .await
-            .with_context(|| {
-                format!("failed to load GCS credentials from '{credentials_path}'")
-            })?;
+            .with_context(|| format!("failed to load GCS credentials from '{credentials_path}'"))?;
         let config = ClientConfig::default()
             .with_credentials(creds)
             .await
@@ -79,18 +76,39 @@ impl BackupProvider for GcsProvider {
     }
 
     async fn test_connection(&self) -> Result<String> {
+        // get_bucket requires storage.buckets.get IAM permission, which many
+        // service accounts lack (they may only have storage.objects.create).
+        // Instead, verify connectivity by uploading a tiny probe object and
+        // then deleting it — this only needs object-level permissions.
+        use google_cloud_storage::http::objects::delete::DeleteObjectRequest;
+
+        let probe_key = format!(".shadow-probe-{}", std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis());
+
+        let req = UploadObjectRequest {
+            bucket: self.bucket.clone(),
+            ..Default::default()
+        };
         self.client
-            .get_bucket(&GetBucketRequest {
+            .upload_object(
+                &req,
+                b"shadow-probe".to_vec(),
+                &UploadType::Simple(Media::new(probe_key.clone())),
+            )
+            .await
+            .with_context(|| format!("GCS bucket '{}' not accessible", self.bucket))?;
+
+        // Best-effort cleanup — ignore errors
+        let _ = self.client
+            .delete_object(&DeleteObjectRequest {
                 bucket: self.bucket.clone(),
+                object: probe_key,
                 ..Default::default()
             })
-            .await
-            .with_context(|| {
-                format!(
-                    "GCS bucket '{}' not accessible — check bucket name and credentials_path in config",
-                    self.bucket
-                )
-            })?;
+            .await;
+
         Ok(format!("GCS OK: {}", self.bucket))
     }
 }

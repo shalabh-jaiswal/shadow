@@ -104,9 +104,7 @@ impl S3Provider {
             .to_string();
 
         // Upload parts; abort the session on any error
-        let result = self
-            .upload_parts(local_path, remote_key, &upload_id)
-            .await;
+        let result = self.upload_parts(local_path, remote_key, &upload_id).await;
 
         match result {
             Ok(parts) => {
@@ -146,9 +144,12 @@ impl S3Provider {
         remote_key: &str,
         upload_id: &str,
     ) -> Result<Vec<CompletedPart>> {
-        let mut file = tokio::fs::File::open(local_path)
-            .await
-            .with_context(|| format!("failed to open {} for multipart upload", local_path.display()))?;
+        let mut file = tokio::fs::File::open(local_path).await.with_context(|| {
+            format!(
+                "failed to open {} for multipart upload",
+                local_path.display()
+            )
+        })?;
 
         let mut parts: Vec<CompletedPart> = Vec::new();
         let mut part_number = 1i32;

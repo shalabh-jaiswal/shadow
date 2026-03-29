@@ -1,4 +1,5 @@
-use crate::config::{self, GcsConfig, NasConfig, S3Config};
+use crate::config::{self, AppConfig, DaemonConfig, GcsConfig, MachineConfig, NasConfig, S3Config};
+use crate::daemon::stats::StatsSnapshot;
 use crate::daemon::watcher;
 use crate::providers::{gcs::GcsProvider, nas::NasProvider, s3::S3Provider, BackupProvider};
 use serde::Serialize;
@@ -53,6 +54,9 @@ pub async fn add_folder(
             watcher::watch_path(w, p).map_err(|e| e.to_string())?;
         }
     }
+
+    // Spawn initial scan for new files
+    daemon.spawn_scan(Path::new(&path).to_path_buf());
 
     let _ = app_handle.emit("folder_added", serde_json::json!({ "path": path }));
 
@@ -125,7 +129,11 @@ pub async fn test_provider(
                 if !cfg.s3.enabled || cfg.s3.bucket.is_empty() {
                     return Err("S3 is not configured".into());
                 }
-                (cfg.s3.bucket.clone(), cfg.s3.region.clone(), cfg.s3.profile.clone())
+                (
+                    cfg.s3.bucket.clone(),
+                    cfg.s3.region.clone(),
+                    cfg.s3.profile.clone(),
+                )
             };
             let provider = S3Provider::new(&region, &bucket, &profile)
                 .await
@@ -163,22 +171,57 @@ pub async fn set_provider_config(
 
     match provider.to_lowercase().as_str() {
         "s3" => {
-            let s3: S3Config =
-                serde_json::from_str(&config_json).map_err(|e| e.to_string())?;
+            let s3: S3Config = serde_json::from_str(&config_json).map_err(|e| e.to_string())?;
             cfg.s3 = s3;
         }
         "gcs" => {
-            let gcs: GcsConfig =
-                serde_json::from_str(&config_json).map_err(|e| e.to_string())?;
+            let gcs: GcsConfig = serde_json::from_str(&config_json).map_err(|e| e.to_string())?;
             cfg.gcs = gcs;
         }
         "nas" => {
-            let nas: NasConfig =
-                serde_json::from_str(&config_json).map_err(|e| e.to_string())?;
+            let nas: NasConfig = serde_json::from_str(&config_json).map_err(|e| e.to_string())?;
             cfg.nas = nas;
         }
         _ => return Err(format!("unknown provider: {provider}")),
     }
 
     config::save(&cfg).map_err(|e| e.to_string())
+}
+
+/// Return the full app configuration (no secrets — credentials are file paths only).
+#[tauri::command]
+pub async fn get_config(state: State<'_, DaemonHandle>) -> Result<AppConfig, String> {
+    let daemon = state.0.lock().await;
+    let cfg = daemon.config.read().await;
+    Ok(cfg.clone())
+}
+
+/// Persist updated daemon and machine settings. Provider configs are unchanged.
+/// Note: upload_workers change takes effect on next app restart.
+#[tauri::command]
+pub async fn set_daemon_config(
+    daemon: DaemonConfig,
+    machine: MachineConfig,
+    state: State<'_, DaemonHandle>,
+) -> Result<(), String> {
+    let handle = state.0.lock().await;
+    let mut cfg = handle.config.write().await;
+    cfg.daemon = daemon;
+    cfg.machine = machine;
+    config::save(&cfg).map_err(|e| e.to_string())
+}
+
+/// Return a live snapshot of upload counters.
+#[tauri::command]
+pub async fn get_stats(state: State<'_, DaemonHandle>) -> Result<StatsSnapshot, String> {
+    let daemon = state.0.lock().await;
+    Ok(daemon.stats.snapshot())
+}
+
+/// Clear the blake3 hash store, forcing a full re-upload on next scan.
+#[tauri::command]
+pub async fn clear_hash_store(state: State<'_, DaemonHandle>) -> Result<(), String> {
+    let daemon = state.0.lock().await;
+    daemon.db.clear().map_err(|e| e.to_string())?;
+    Ok(())
 }

@@ -1,5 +1,6 @@
 use crate::config::SharedConfig;
 use crate::daemon::hasher::{self, HashCheckResult};
+use crate::daemon::stats::DaemonStats;
 use crate::ipc::{emit_file_event, FileEvent};
 use crate::path_utils::remote_key;
 use crate::providers::DynProvider;
@@ -7,7 +8,7 @@ use anyhow::Result;
 use sled::Db;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 use tokio::sync::{mpsc, Semaphore};
 use tokio_retry::strategy::ExponentialBackoff;
 use tokio_retry::Retry;
@@ -18,6 +19,7 @@ pub async fn start(
     db: Db,
     config: SharedConfig,
     app_handle: AppHandle,
+    stats: DaemonStats,
 ) {
     let workers = config.read().await.daemon.upload_workers;
     let semaphore = Arc::new(Semaphore::new(workers));
@@ -68,9 +70,19 @@ pub async fn start(
                 let app_handle = app_handle.clone();
                 let path = path.clone();
                 let host = host.clone();
+                let stats = stats.clone();
 
                 tokio::spawn(async move {
                     let _permit = permit.acquire().await.unwrap();
+
+                    // Capture file size once for stats — best-effort, 0 on error.
+                    let file_bytes = tokio::fs::metadata(&path)
+                        .await
+                        .map(|m| m.len())
+                        .unwrap_or(0);
+
+                    stats.upload_started();
+
                     let rkey = remote_key(&host, &path);
                     let mut all_ok = true;
 
@@ -96,6 +108,13 @@ pub async fn start(
                                         error: None,
                                     },
                                 );
+                                let _ = app_handle.emit(
+                                    "provider_status",
+                                    serde_json::json!({
+                                        "provider": provider.name(),
+                                        "status": "ok"
+                                    }),
+                                );
                             }
                             Err(e) => {
                                 all_ok = false;
@@ -108,11 +127,22 @@ pub async fn start(
                                         error: Some(e.to_string()),
                                     },
                                 );
+                                let _ = app_handle.emit(
+                                    "provider_status",
+                                    serde_json::json!({
+                                        "provider": provider.name(),
+                                        "status": "error",
+                                        "error": e.to_string()
+                                    }),
+                                );
                             }
                         }
                     }
 
+                    stats.upload_finished();
+
                     if all_ok {
+                        stats.record_upload(file_bytes);
                         if let Err(e) = hasher::record_hash(&db, &path, hash) {
                             eprintln!("[shadow] failed to record hash for {}: {e}", path.display());
                         }
