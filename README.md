@@ -1,5 +1,11 @@
 # Shadow
 
+[![Release](https://img.shields.io/github/v/release/shalabh-jaiswal/shadow?style=flat-square&label=latest)](https://github.com/shalabh-jaiswal/shadow/releases/latest)
+[![Build](https://img.shields.io/github/actions/workflow/status/shalabh-jaiswal/shadow/release.yml?style=flat-square&label=build)](https://github.com/shalabh-jaiswal/shadow/actions/workflows/release.yml)
+[![macOS](https://img.shields.io/badge/macOS-supported-brightgreen?style=flat-square&logo=apple)](https://github.com/shalabh-jaiswal/shadow/releases/latest)
+[![Windows](https://img.shields.io/badge/Windows-supported-brightgreen?style=flat-square&logo=windows)](https://github.com/shalabh-jaiswal/shadow/releases/latest)
+[![Linux](https://img.shields.io/badge/Linux-supported-brightgreen?style=flat-square&logo=linux)](https://github.com/shalabh-jaiswal/shadow/releases/latest)
+
 Shadow is a real-time, cross-platform file backup desktop app. It watches folders using OS-native kernel events and instantly backs up new or modified files to AWS S3, Google Cloud Storage, and/or a NAS mount point.
 
 ## Features
