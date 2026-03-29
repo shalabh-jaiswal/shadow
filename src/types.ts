@@ -30,6 +30,9 @@ export interface S3Config {
 export interface GcsConfig {
   enabled: boolean;
   bucket: string;
+  project_id: string;
+  /** Absolute path to the GCS service account JSON key file */
+  credentials_path: string;
   /** Optional key prefix prepended to every remote path */
   prefix: string;
 }

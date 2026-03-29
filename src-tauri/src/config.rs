@@ -25,6 +25,9 @@ pub struct S3Config {
 pub struct GcsConfig {
     pub enabled: bool,
     pub bucket: String,
+    pub project_id: String,
+    /// Absolute path to the GCS service account JSON key file
+    pub credentials_path: String,
     /// Optional key prefix prepended to every remote path
     pub prefix: String,
 }

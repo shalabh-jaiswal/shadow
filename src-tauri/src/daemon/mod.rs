@@ -40,7 +40,7 @@ pub async fn start(config: SharedConfig, app_handle: AppHandle) -> Result<Daemon
             }
         }
         if cfg.gcs.enabled && !cfg.gcs.bucket.is_empty() {
-            match GcsProvider::new(&cfg.gcs.bucket).await {
+            match GcsProvider::new(&cfg.gcs.bucket, &cfg.gcs.credentials_path).await {
                 Ok(provider) => p.push(Arc::new(provider)),
                 Err(e) => eprintln!("[shadow] GCS init failed: {e}"),
             }

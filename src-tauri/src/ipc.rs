@@ -133,15 +133,15 @@ pub async fn test_provider(
             provider.test_connection().await.map_err(|e| e.to_string())
         }
         "gcs" => {
-            let bucket = {
+            let (bucket, credentials_path) = {
                 let daemon = state.0.lock().await;
                 let cfg = daemon.config.read().await;
                 if !cfg.gcs.enabled || cfg.gcs.bucket.is_empty() {
                     return Err("GCS is not configured".into());
                 }
-                cfg.gcs.bucket.clone()
+                (cfg.gcs.bucket.clone(), cfg.gcs.credentials_path.clone())
             };
-            let provider = GcsProvider::new(&bucket)
+            let provider = GcsProvider::new(&bucket, &credentials_path)
                 .await
                 .map_err(|e| e.to_string())?;
             provider.test_connection().await.map_err(|e| e.to_string())

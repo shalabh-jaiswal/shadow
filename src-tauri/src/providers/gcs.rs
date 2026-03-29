@@ -1,5 +1,6 @@
 use crate::providers::BackupProvider;
 use anyhow::{Context, Result};
+use google_cloud_auth::credentials::CredentialsFile;
 use google_cloud_storage::client::{Client, ClientConfig};
 use google_cloud_storage::http::buckets::get::GetBucketRequest;
 use google_cloud_storage::http::objects::upload::{Media, UploadObjectRequest, UploadType};
@@ -7,8 +8,7 @@ use google_cloud_storage::http::objects::Object;
 use std::path::Path;
 
 /// Files smaller than this use GCS simple upload.
-/// Files at or above this threshold use the GCS resumable upload protocol,
-/// which tolerates network interruptions and supports arbitrarily large objects.
+/// Files at or above this threshold use the GCS multipart upload protocol.
 const RESUMABLE_THRESHOLD: u64 = 5 * 1024 * 1024; // 5 MB
 
 pub struct GcsProvider {
@@ -17,14 +17,19 @@ pub struct GcsProvider {
 }
 
 impl GcsProvider {
-    /// Build a GCS client using Application Default Credentials.
-    /// Set the GOOGLE_APPLICATION_CREDENTIALS environment variable to the
-    /// path of your service account JSON key file before starting Shadow.
-    pub async fn new(bucket: &str) -> Result<Self> {
-        let config = ClientConfig::default()
-            .with_auth()
+    /// Build a GCS client from a service account JSON key file.
+    /// `credentials_path` must be the absolute path to the JSON key file
+    /// downloaded from the GCP console (config: `[gcs] credentials_path`).
+    pub async fn new(bucket: &str, credentials_path: &str) -> Result<Self> {
+        let creds: CredentialsFile = CredentialsFile::new_from_file(credentials_path.to_string())
             .await
-            .context("failed to initialize GCS credentials — ensure GOOGLE_APPLICATION_CREDENTIALS is set")?;
+            .with_context(|| {
+                format!("failed to load GCS credentials from '{credentials_path}'")
+            })?;
+        let config = ClientConfig::default()
+            .with_credentials(creds)
+            .await
+            .context("failed to initialize GCS client")?;
         let client = Client::new(config);
         Ok(Self {
             client,
@@ -82,7 +87,7 @@ impl BackupProvider for GcsProvider {
             .await
             .with_context(|| {
                 format!(
-                    "GCS bucket '{}' not accessible — check bucket name and GOOGLE_APPLICATION_CREDENTIALS",
+                    "GCS bucket '{}' not accessible — check bucket name and credentials_path in config",
                     self.bucket
                 )
             })?;
