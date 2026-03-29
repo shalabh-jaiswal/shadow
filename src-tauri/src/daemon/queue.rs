@@ -158,7 +158,8 @@ pub async fn start(
                         if let Some(folder) = watched_folder_for(&path, &config).await {
                             let key = format!("last_backup:{folder}");
                             let _ = db.insert(key.as_bytes(), &ts.to_le_bytes());
-                            let _ = app_handle.emit("folder_updated", serde_json::json!({ "folder": folder }));
+                            let _ = app_handle
+                                .emit("folder_updated", serde_json::json!({ "folder": folder }));
                         }
                     }
                 });
@@ -173,7 +174,8 @@ pub async fn start(
 /// Return the watched folder path that is the longest prefix of `path`.
 async fn watched_folder_for(path: &Path, config: &SharedConfig) -> Option<String> {
     let cfg = config.read().await;
-    let result = cfg.watched_folders
+    let result = cfg
+        .watched_folders
         .paths
         .iter()
         .filter(|f| path.starts_with(f.as_str()))

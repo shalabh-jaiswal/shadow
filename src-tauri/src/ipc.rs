@@ -106,7 +106,9 @@ pub async fn get_watched_folders(
         .map(|p| {
             let last_backup = {
                 let key = format!("last_backup:{p}");
-                daemon.db.get(key.as_bytes())
+                daemon
+                    .db
+                    .get(key.as_bytes())
                     .ok()
                     .flatten()
                     .and_then(|v| v.as_ref().try_into().ok().map(u64::from_le_bytes))

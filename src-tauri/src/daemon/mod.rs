@@ -79,7 +79,12 @@ pub async fn start(config: SharedConfig, app_handle: AppHandle) -> Result<Daemon
     let debouncer_handle = {
         let config = config.clone();
         let paused_ref = paused.clone();
-        tokio::spawn(debouncer::start(watcher_rx, upload_tx.clone(), config, paused_ref))
+        tokio::spawn(debouncer::start(
+            watcher_rx,
+            upload_tx.clone(),
+            config,
+            paused_ref,
+        ))
     };
 
     // Create notify watcher

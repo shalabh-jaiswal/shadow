@@ -82,10 +82,13 @@ impl BackupProvider for GcsProvider {
         // then deleting it — this only needs object-level permissions.
         use google_cloud_storage::http::objects::delete::DeleteObjectRequest;
 
-        let probe_key = format!(".shadow-probe-{}", std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis());
+        let probe_key = format!(
+            ".shadow-probe-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis()
+        );
 
         let req = UploadObjectRequest {
             bucket: self.bucket.clone(),
@@ -101,7 +104,8 @@ impl BackupProvider for GcsProvider {
             .with_context(|| format!("GCS bucket '{}' not accessible", self.bucket))?;
 
         // Best-effort cleanup — ignore errors
-        let _ = self.client
+        let _ = self
+            .client
             .delete_object(&DeleteObjectRequest {
                 bucket: self.bucket.clone(),
                 object: probe_key,

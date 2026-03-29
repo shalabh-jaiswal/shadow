@@ -17,7 +17,10 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, None))
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             // Tray menu: Show Window | Pause Backup | --- | Quit Shadow
@@ -45,8 +48,12 @@ pub fn run() {
                                 // Toggle pause state
                                 if let Some(state) = app_handle.try_state::<DaemonHandle>() {
                                     let daemon = state.0.lock().await;
-                                    let current_paused = daemon.paused.load(std::sync::atomic::Ordering::Relaxed);
-                                    daemon.paused.store(!current_paused, std::sync::atomic::Ordering::Relaxed);
+                                    let current_paused =
+                                        daemon.paused.load(std::sync::atomic::Ordering::Relaxed);
+                                    daemon.paused.store(
+                                        !current_paused,
+                                        std::sync::atomic::Ordering::Relaxed,
+                                    );
 
                                     // Emit appropriate event
                                     if !current_paused {
