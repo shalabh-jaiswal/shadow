@@ -151,6 +151,14 @@ Full PRD is at `.claude/prd.md`. When in doubt about requirements, consult it.
 All functional requirements (FR-01 through FR-10) and non-functional requirements
 (NFR-01 through NFR-10) are binding.
 
+## Distribution & Signing
+This is a personal-use app. Code signing is intentionally skipped.
+- No Apple Developer certificate
+- No Windows Authenticode certificate
+- No TAURI_SIGNING_PRIVATE_KEY required in CI
+- GitHub Actions builds unsigned installers only
+- README documents the OS security warning bypass for users
+
 ## Current Milestone
 See `.claude/MILESTONE.md` for the current active milestone and its exit criteria.
 Update it when a milestone is completed.
