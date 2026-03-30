@@ -12,6 +12,7 @@
     "autostart:allow-is-enabled",
     "updater:allow-check",
     "updater:allow-download-and-install",
-    "opener:allow-open-path"
+    "opener:allow-open-path",
+    "opener:allow-open-url"
   ]
 }

@@ -64,6 +64,9 @@ export const ipc = {
 
   openDataFolder: (): Promise<void> =>
     invoke<void>('open_data_folder'),
+
+  openUrl: (url: string): Promise<void> =>
+    invoke<void>('open_url', { url }),
 } as const;
 
 // ── Provider config helpers ───────────────────────────────────────────────────

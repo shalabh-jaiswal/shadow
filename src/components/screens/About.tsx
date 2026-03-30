@@ -117,26 +117,22 @@ export function About() {
         </h2>
         <div className="space-y-2">
           <div>
-            <a
-              href="https://github.com/shalabh-jaiswal/shadow"
-              target="_blank"
-              rel="noreferrer"
-              className="text-blue-600 dark:text-blue-400 hover:underline inline-flex items-center gap-1"
+            <button
+              onClick={() => ipc.openUrl('https://github.com/shalabh-jaiswal/shadow')}
+              className="text-blue-600 dark:text-blue-400 hover:underline inline-flex items-center gap-1 text-sm"
             >
               GitHub
               <span className="text-xs">↗</span>
-            </a>
+            </button>
           </div>
           <div>
-            <a
-              href="https://github.com/shalabh-jaiswal/shadow/issues/new"
-              target="_blank"
-              rel="noreferrer"
-              className="text-blue-600 dark:text-blue-400 hover:underline inline-flex items-center gap-1"
+            <button
+              onClick={() => ipc.openUrl('https://github.com/shalabh-jaiswal/shadow/issues/new')}
+              className="text-blue-600 dark:text-blue-400 hover:underline inline-flex items-center gap-1 text-sm"
             >
               Report a Bug
               <span className="text-xs">↗</span>
-            </a>
+            </button>
           </div>
         </div>
       </div>

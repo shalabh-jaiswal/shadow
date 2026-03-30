@@ -328,6 +328,15 @@ pub async fn check_for_updates(app: AppHandle) -> Result<Option<String>, String>
     Ok(update.map(|u| u.version.to_string()))
 }
 
+/// Open a URL in the system default browser.
+#[tauri::command]
+pub async fn open_url(url: String, app: AppHandle) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    app.opener()
+        .open_url(url, None::<&str>)
+        .map_err(|e| e.to_string())
+}
+
 /// Open the config directory (containing config.toml) in the OS file manager.
 #[tauri::command]
 pub async fn open_config_folder(app: AppHandle) -> Result<(), String> {

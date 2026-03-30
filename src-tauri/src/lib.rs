@@ -103,6 +103,7 @@ pub fn run() {
             ipc::get_paused,
             ipc::set_autostart,
             ipc::check_for_updates,
+            ipc::open_url,
             ipc::open_config_folder,
             ipc::open_data_folder,
         ])
