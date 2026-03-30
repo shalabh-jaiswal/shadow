@@ -8,7 +8,7 @@ interface FoldersState {
   error: string | null;
   scanProgress: Record<string, number>; // folder path → % complete (0-100), absent = not scanning
   fetchFolders: () => Promise<void>;
-  addFolder: (path: string) => Promise<void>;
+  addFolder: (path: string, scanExisting: boolean) => Promise<void>;
   removeFolder: (path: string) => Promise<void>;
   setScanProgress: (folder: string, pct: number) => void;
   clearScanProgress: (folder: string) => void;
@@ -31,8 +31,8 @@ export const useFoldersStore = create<FoldersState>((set) => ({
     }
   },
 
-  addFolder: async (path) => {
-    await ipc.addFolder(path);
+  addFolder: async (path, scanExisting) => {
+    await ipc.addFolder(path, scanExisting);
     // Re-fetch from daemon as single source of truth
     const folders = await ipc.getWatchedFolders();
     set({ folders });

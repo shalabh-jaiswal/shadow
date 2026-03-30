@@ -20,8 +20,8 @@ export const ipc = {
   ping: (): Promise<string> =>
     invoke<string>('ping'),
 
-  addFolder: (path: string): Promise<void> =>
-    invoke<void>('add_folder', { path }),
+  addFolder: (path: string, scanExisting: boolean): Promise<void> =>
+    invoke<void>('add_folder', { path, scanExisting }),
 
   removeFolder: (path: string): Promise<void> =>
     invoke<void>('remove_folder', { path }),

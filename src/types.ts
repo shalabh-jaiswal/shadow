@@ -54,6 +54,7 @@ export interface FolderStatus {
   status: string;
   /** Unix timestamp in milliseconds of the last successful upload. Null if never. */
   last_backup: number | null;
+  scan_mode: 'full' | 'forward_only';
 }
 
 export interface FileEvent {

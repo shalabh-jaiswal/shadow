@@ -27,6 +27,8 @@ pub struct FolderStatus {
     /// Unix timestamp in milliseconds of the last successful upload from this folder.
     /// `None` means no file has been backed up from this folder yet.
     pub last_backup: Option<u64>,
+    /// Backup mode for this folder: "full" or "forward_only"
+    pub scan_mode: String,
 }
 
 #[tauri::command]
@@ -37,6 +39,7 @@ pub async fn ping() -> String {
 #[tauri::command]
 pub async fn add_folder(
     path: String,
+    scan_existing: bool,
     state: State<'_, DaemonHandle>,
     app_handle: AppHandle,
 ) -> Result<(), String> {
@@ -51,6 +54,14 @@ pub async fn add_folder(
         }
     }
 
+    // Store folder mode in sled
+    let mode_key = format!("folder_mode:{}", path);
+    let mode_value = if scan_existing { "full" } else { "forward_only" };
+    daemon
+        .db
+        .insert(mode_key.as_bytes(), mode_value.as_bytes())
+        .map_err(|e| e.to_string())?;
+
     // Register with watcher
     if let Some(ref mut w) = daemon.watcher {
         let p = Path::new(&path);
@@ -59,8 +70,10 @@ pub async fn add_folder(
         }
     }
 
-    // Spawn initial scan for new files
-    daemon.spawn_scan(Path::new(&path).to_path_buf());
+    // Spawn initial scan for new files only if scan_existing is true
+    if scan_existing {
+        daemon.spawn_scan(Path::new(&path).to_path_buf());
+    }
 
     let _ = app_handle.emit("folder_added", serde_json::json!({ "path": path }));
 
@@ -81,6 +94,10 @@ pub async fn remove_folder(
         cfg.watched_folders.paths.retain(|p| p != &path);
         config::save(&cfg).map_err(|e| e.to_string())?;
     }
+
+    // Remove folder mode from sled
+    let mode_key = format!("folder_mode:{}", path);
+    let _ = daemon.db.remove(mode_key.as_bytes());
 
     // Unregister from watcher
     if let Some(ref mut w) = daemon.watcher {
@@ -113,10 +130,18 @@ pub async fn get_watched_folders(
                     .flatten()
                     .and_then(|v| v.as_ref().try_into().ok().map(u64::from_le_bytes))
             };
+            let scan_mode = daemon
+                .db
+                .get(format!("folder_mode:{p}").as_bytes())
+                .ok()
+                .flatten()
+                .and_then(|v| std::str::from_utf8(&v).ok().map(|s| s.to_string()))
+                .unwrap_or_else(|| "full".to_string()); // default: full for legacy folders
             FolderStatus {
                 path: p.clone(),
                 status: "active".into(),
                 last_backup,
+                scan_mode,
             }
         })
         .collect();

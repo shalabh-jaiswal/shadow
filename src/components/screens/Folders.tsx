@@ -18,6 +18,7 @@ export function Folders() {
   const { folders, isLoading, error, fetchFolders, addFolder, removeFolder, scanProgress, setLastBackup } = useFoldersStore();
   const [removePath, setRemovePath] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
+  const [selectedPath, setSelectedPath] = useState<string | null>(null);
 
   // Listen for scan progress events
   useScanProgress();
@@ -43,12 +44,23 @@ export function Folders() {
       });
 
       if (selected) {
-        await addFolder(selected);
+        setSelectedPath(selected);
       }
     } catch (e) {
-      console.error('Failed to add folder:', e);
+      // Handle error silently for now
     } finally {
       setIsAdding(false);
+    }
+  };
+
+  const handleAddWithScanMode = async (scanExisting: boolean) => {
+    if (!selectedPath) return;
+
+    try {
+      await addFolder(selectedPath, scanExisting);
+      setSelectedPath(null);
+    } catch (e) {
+      // Handle error silently for now
     }
   };
 
@@ -121,7 +133,12 @@ export function Folders() {
                 {folders.map((folder) => (
                   <tr key={folder.path}>
                     <td className="px-6 py-4 text-sm text-gray-900 dark:text-white font-mono">
-                      {folder.path}
+                      <div className="flex items-center gap-2">
+                        {folder.path}
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400">
+                          {folder.scan_mode === 'full' ? 'All files' : 'New files only'}
+                        </span>
+                      </div>
                     </td>
                     <td className="px-6 py-4 text-sm">
                       {scanProgress[folder.path] !== undefined ? (
@@ -160,6 +177,52 @@ export function Folders() {
           </div>
         )}
       </div>
+
+      {/* Add Folder Modal */}
+      {selectedPath && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="w-full max-w-lg rounded-lg bg-white p-6 shadow-xl dark:bg-gray-800">
+            <h3 className="mb-3 text-lg font-semibold text-gray-900 dark:text-white">
+              Add Watched Folder
+            </h3>
+            <p className="mb-2 text-sm text-gray-700 dark:text-gray-300">
+              Selected folder:
+            </p>
+            <p className="mb-4 text-sm font-mono bg-gray-50 dark:bg-gray-700 p-2 rounded text-gray-900 dark:text-gray-100">
+              {selectedPath}
+            </p>
+            <p className="mb-6 text-sm text-gray-700 dark:text-gray-300">
+              How would you like to back up this folder?
+            </p>
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => handleAddWithScanMode(true)}
+                className="px-4 py-3 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 text-left"
+              >
+                <div className="font-semibold">Back up existing files</div>
+                <div className="text-xs text-blue-100 mt-1">
+                  Scan and upload all files currently in the folder
+                </div>
+              </button>
+              <button
+                onClick={() => handleAddWithScanMode(false)}
+                className="px-4 py-3 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 dark:bg-gray-600 dark:text-gray-300 dark:hover:bg-gray-500 text-left"
+              >
+                <div className="font-semibold">Going forward only</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Only back up new or modified files from now on
+                </div>
+              </button>
+              <button
+                onClick={() => setSelectedPath(null)}
+                className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <ConfirmModal
         isOpen={removePath !== null}

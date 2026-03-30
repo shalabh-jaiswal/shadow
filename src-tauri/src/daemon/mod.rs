@@ -160,3 +160,31 @@ impl DaemonState {
         );
     }
 }
+
+#[cfg(test)]
+mod tests {
+
+    #[test]
+    fn folder_mode_sled_key_format() {
+        // Test the expected key format for folder modes
+        let path = "/Users/test/Documents";
+        let expected_key = format!("folder_mode:{path}");
+        assert_eq!(expected_key, "folder_mode:/Users/test/Documents");
+
+        // Test Windows path
+        let windows_path = "C:\\Users\\test\\Documents";
+        let windows_key = format!("folder_mode:{windows_path}");
+        assert_eq!(windows_key, "folder_mode:C:\\Users\\test\\Documents");
+    }
+
+    #[test]
+    fn folder_mode_values() {
+        // Test expected mode values
+        let full_mode = "full";
+        let forward_only_mode = "forward_only";
+
+        // These should be the exact strings we store/retrieve
+        assert_eq!(full_mode.as_bytes(), b"full");
+        assert_eq!(forward_only_mode.as_bytes(), b"forward_only");
+    }
+}

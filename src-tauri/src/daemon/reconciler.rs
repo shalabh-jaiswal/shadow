@@ -49,11 +49,24 @@ pub async fn start(
             cfg.watched_folders.paths.clone()
         };
 
-        // Scan each watched folder
+        // Scan each watched folder (only if mode is "full")
         let mut folders_scanned = 0;
         for folder in &watched_folders {
             let folder_path = PathBuf::from(folder);
             if folder_path.exists() {
+                // Check folder mode from sled
+                let mode_key = format!("folder_mode:{folder}");
+                let mode = db
+                    .get(mode_key.as_bytes())
+                    .ok()
+                    .flatten()
+                    .and_then(|v| std::str::from_utf8(&v).ok().map(|s| s.to_string()))
+                    .unwrap_or_else(|| "full".to_string());
+
+                if mode == "forward_only" {
+                    continue; // skip — user never wanted existing files backed up
+                }
+
                 scanner::spawn_scan(
                     folder_path,
                     config.clone(),
