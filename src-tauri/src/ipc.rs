@@ -327,3 +327,28 @@ pub async fn check_for_updates(app: AppHandle) -> Result<Option<String>, String>
     let update = updater.check().await.map_err(|e| e.to_string())?;
     Ok(update.map(|u| u.version.to_string()))
 }
+
+/// Open the config directory (containing config.toml) in the OS file manager.
+#[tauri::command]
+pub async fn open_config_folder(app: AppHandle) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    let path = config::config_path();
+    let folder = path.parent().ok_or("no parent dir")?;
+    app.opener()
+        .open_path(folder.to_string_lossy().as_ref(), None::<&str>)
+        .map_err(|e| e.to_string())
+}
+
+/// Open the data directory (~/.shadow/hashdb/) in the OS file manager.
+#[tauri::command]
+pub async fn open_data_folder(app: AppHandle) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    let path = dirs::home_dir()
+        .ok_or("cannot find home dir")?
+        .join(".shadow");
+    // Create if not exists so it can be opened
+    std::fs::create_dir_all(&path).map_err(|e| e.to_string())?;
+    app.opener()
+        .open_path(path.to_string_lossy().as_ref(), None::<&str>)
+        .map_err(|e| e.to_string())
+}

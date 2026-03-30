@@ -103,6 +103,8 @@ pub fn run() {
             ipc::get_paused,
             ipc::set_autostart,
             ipc::check_for_updates,
+            ipc::open_config_folder,
+            ipc::open_data_folder,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

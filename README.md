@@ -23,7 +23,7 @@ Shadow is a real-time, cross-platform file backup desktop app. It watches folder
 
 ### macOS
 
-1. Download the latest `.dmg` file from [Releases](https://github.com/YOUR_GITHUB_USERNAME/shadow/releases)
+1. Download the latest `.dmg` file from [Releases](https://github.com/shalabh-jaiswal/shadow/releases)
 2. Open the DMG and drag Shadow to Applications
 3. **Security**: On first launch, you may see "Shadow cannot be opened because it is from an unidentified developer"
    - Go to **System Preferences > Security & Privacy > General**
@@ -32,7 +32,7 @@ Shadow is a real-time, cross-platform file backup desktop app. It watches folder
 
 ### Windows
 
-1. Download the latest `.exe` installer from [Releases](https://github.com/YOUR_GITHUB_USERNAME/shadow/releases)
+1. Download the latest `.exe` installer from [Releases](https://github.com/shalabh-jaiswal/shadow/releases)
 2. Run the installer
 3. **Security**: If Windows Defender SmartScreen appears:
    - Click **"More info"**
@@ -91,7 +91,7 @@ The configuration file is automatically created with default values when you fir
 
 ### Development
 ```bash
-git clone https://github.com/YOUR_GITHUB_USERNAME/shadow.git
+git clone https://github.com/shalabh-jaiswal/shadow.git
 cd shadow
 npm install
 npm run tauri dev

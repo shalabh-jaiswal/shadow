@@ -1,4 +1,4 @@
-type Screen = 'dashboard' | 'folders' | 'providers' | 'settings';
+type Screen = 'dashboard' | 'folders' | 'providers' | 'settings' | 'about';
 
 interface SidebarProps {
   current: Screen;
@@ -10,6 +10,7 @@ const navItems = [
   { id: 'folders' as const, label: 'Folders', icon: '📁' },
   { id: 'providers' as const, label: 'Providers', icon: '☁️' },
   { id: 'settings' as const, label: 'Settings', icon: '⚙️' },
+  { id: 'about' as const, label: 'About', icon: 'ℹ️' },
 ];
 
 export function Sidebar({ current, onNavigate }: SidebarProps) {

@@ -58,6 +58,12 @@ export const ipc = {
 
   checkForUpdates: (): Promise<string | null> =>
     invoke<string | null>('check_for_updates'),
+
+  openConfigFolder: (): Promise<void> =>
+    invoke<void>('open_config_folder'),
+
+  openDataFolder: (): Promise<void> =>
+    invoke<void>('open_data_folder'),
 } as const;
 
 // ── Provider config helpers ───────────────────────────────────────────────────

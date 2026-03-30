@@ -1,6 +1,6 @@
 import { Sidebar } from './Sidebar';
 
-type Screen = 'dashboard' | 'folders' | 'providers' | 'settings';
+type Screen = 'dashboard' | 'folders' | 'providers' | 'settings' | 'about';
 
 interface LayoutProps {
   current: Screen;
