@@ -96,9 +96,10 @@ All emitted via `app_handle.emit()`:
 
 ---
 
-## Active: Post-M6 Feature Development (v0.4.0)
+## Active: Post-M6 Feature Development (v0.5.0)
 v0.3.0 (2026-03-30): Periodic reconciliation for failed uploads, per-folder backup mode (full vs forward-only).
 v0.4.0 (2026-03-30): About screen, GitHub/bug report links via system browser, fixed README links.
+v0.5.0 (2026-03-30): Fix duplicate tray icon, dynamic app version on About page.
 
 ---
 
