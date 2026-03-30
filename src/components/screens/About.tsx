@@ -1,12 +1,16 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { getVersion } from '@tauri-apps/api/app';
 import { ipc } from '../../ipc';
 
-const APP_VERSION = '0.3.0';
-
 export function About() {
+  const [appVersion, setAppVersion] = useState<string>('...');
   const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
   const [updateStatus, setUpdateStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    getVersion().then(setAppVersion).catch(() => setAppVersion('unknown'));
+  }, []);
 
   const checkForUpdates = async () => {
     setIsCheckingUpdates(true);
@@ -49,7 +53,7 @@ export function About() {
           Shadow
         </h1>
         <p className="text-lg text-gray-600 dark:text-gray-400 mt-2">
-          Version {APP_VERSION}
+          Version {appVersion}
         </p>
         <p className="text-gray-600 dark:text-gray-400 mt-1">
           Real-time file backup to S3, GCS, and NAS.
