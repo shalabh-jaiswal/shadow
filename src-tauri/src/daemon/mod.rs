@@ -1,6 +1,7 @@
 pub mod debouncer;
 pub mod hasher;
 pub mod queue;
+pub mod reconciler;
 pub mod scanner;
 pub mod stats;
 pub mod watcher;
@@ -87,6 +88,20 @@ pub async fn start(config: SharedConfig, app_handle: AppHandle) -> Result<Daemon
         ))
     };
 
+    // Spawn reconciler
+    let reconciler_handle = {
+        let tx = upload_tx.clone();
+        let db = db.clone();
+        let config = config.clone();
+        let paused_ref = paused.clone();
+        let app_handle = app_handle.clone();
+        tokio::spawn(async move {
+            if let Err(e) = reconciler::start(tx, db, config, paused_ref, app_handle).await {
+                eprintln!("[shadow] reconciler error: {e}");
+            }
+        })
+    };
+
     // Create notify watcher
     let mut notify_watcher = watcher::create(watcher_tx)?;
 
@@ -107,7 +122,7 @@ pub async fn start(config: SharedConfig, app_handle: AppHandle) -> Result<Daemon
         config,
         app_handle,
         upload_tx,
-        task_handles: vec![queue_handle, debouncer_handle],
+        task_handles: vec![queue_handle, debouncer_handle, reconciler_handle],
         watcher: Some(notify_watcher),
         db,
         stats,

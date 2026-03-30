@@ -8,6 +8,7 @@ export interface DaemonConfig {
   log_level: string;
   follow_symlinks: boolean;
   start_on_login: boolean;
+  reconcile_interval_mins: number;
 }
 
 export interface MachineConfig {

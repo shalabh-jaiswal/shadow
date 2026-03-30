@@ -56,6 +56,7 @@ mod tests {
                 log_level: "info".into(),
                 follow_symlinks: false,
                 start_on_login: false,
+                reconcile_interval_mins: 60,
             },
             ..Default::default()
         }))

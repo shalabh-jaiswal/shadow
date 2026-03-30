@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useActivityStore, selectFiltered, type FilterStatus } from '../../store/activityStore';
 import { useStatsStore } from '../../store/statsStore';
 import { useActivityFeed } from '../../hooks/useActivityFeed';
+import { useReconcileStatus } from '../../hooks/useReconcileStatus';
 import { ActivityFeed } from '../shared/ActivityFeed';
 
 function formatBytes(bytes: number): string {
@@ -17,6 +18,7 @@ export function Dashboard() {
   const filteredEntries = useActivityStore(selectFiltered);
   const filter = useActivityStore((s) => s.filter);
   const setFilter = useActivityStore((s) => s.setFilter);
+  const { isReconciling, lastReconcile } = useReconcileStatus();
 
   // Subscribe to activity events
   useActivityFeed();
@@ -45,6 +47,17 @@ export function Dashboard() {
           Monitor backup activity and performance
         </p>
       </div>
+
+      {/* Reconciliation Status */}
+      {(isReconciling || (lastReconcile && lastReconcile.filesQueued > 0)) && (
+        <div className="text-sm text-gray-600 dark:text-gray-400">
+          {isReconciling ? (
+            'Reconciling watched folders...'
+          ) : lastReconcile && lastReconcile.filesQueued > 0 ? (
+            `Last reconciliation queued ${lastReconcile.filesQueued} files`
+          ) : null}
+        </div>
+      )}
 
       {/* Stats Row */}
       <div className="grid grid-cols-4 gap-4">

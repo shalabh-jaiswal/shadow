@@ -258,6 +258,15 @@ export function Settings() {
             description="Maximum number of simultaneous uploads"
           />
 
+          <NumberInput
+            label="Reconciliation interval"
+            value={config.daemon.reconcile_interval_mins}
+            onChange={(reconcile_interval_mins) => updateDaemon({ reconcile_interval_mins })}
+            min={5}
+            suffix="minutes"
+            description="How often Shadow re-scans watched folders to retry failed uploads"
+          />
+
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Log Level

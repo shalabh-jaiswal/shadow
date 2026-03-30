@@ -92,4 +92,10 @@ export const events = {
 
   onProviderStatus: (cb: (e: ProviderStatusEvent) => void): Promise<UnlistenFn> =>
     listen<ProviderStatusEvent>('provider_status', (e) => cb(e.payload)),
+
+  onReconcileStarted: (cb: (p: { folders: string[] }) => void): Promise<UnlistenFn> =>
+    listen('reconcile_started', e => cb(e.payload as { folders: string[] })),
+
+  onReconcileComplete: (cb: (p: { folders: string[], files_queued: number }) => void): Promise<UnlistenFn> =>
+    listen('reconcile_complete', e => cb(e.payload as { folders: string[], files_queued: number })),
 } as const;
