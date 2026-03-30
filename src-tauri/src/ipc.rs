@@ -56,7 +56,11 @@ pub async fn add_folder(
 
     // Store folder mode in sled
     let mode_key = format!("folder_mode:{}", path);
-    let mode_value = if scan_existing { "full" } else { "forward_only" };
+    let mode_value = if scan_existing {
+        "full"
+    } else {
+        "forward_only"
+    };
     daemon
         .db
         .insert(mode_key.as_bytes(), mode_value.as_bytes())

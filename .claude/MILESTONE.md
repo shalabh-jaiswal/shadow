@@ -96,7 +96,12 @@ All emitted via `app_handle.emit()`:
 
 ---
 
-## Active: M6 — Polish & Release
+## Active: Post-M6 Feature Development (v0.3.0)
+Periodic reconciliation for failed uploads, per-folder backup mode (full vs forward-only). Released 2026-03-30.
+
+---
+
+## Completed: M6 — Polish & Release
 
 ---
 
