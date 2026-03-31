@@ -68,22 +68,31 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
   saveS3: async (cfg?: S3Config) => {
     const config = cfg ?? get().s3;
     set((s) => ({ isSaving: { ...s.isSaving, s3: true } }));
-    await providerConfig.saveS3(config);
-    set((s) => ({ isSaving: { ...s.isSaving, s3: false } }));
+    try {
+      await providerConfig.saveS3(config);
+    } finally {
+      set((s) => ({ isSaving: { ...s.isSaving, s3: false } }));
+    }
   },
 
   saveGcs: async (cfg?: GcsConfig) => {
     const config = cfg ?? get().gcs;
     set((s) => ({ isSaving: { ...s.isSaving, gcs: true } }));
-    await providerConfig.saveGcs(config);
-    set((s) => ({ isSaving: { ...s.isSaving, gcs: false } }));
+    try {
+      await providerConfig.saveGcs(config);
+    } finally {
+      set((s) => ({ isSaving: { ...s.isSaving, gcs: false } }));
+    }
   },
 
   saveNas: async (cfg?: NasConfig) => {
     const config = cfg ?? get().nas;
     set((s) => ({ isSaving: { ...s.isSaving, nas: true } }));
-    await providerConfig.saveNas(config);
-    set((s) => ({ isSaving: { ...s.isSaving, nas: false } }));
+    try {
+      await providerConfig.saveNas(config);
+    } finally {
+      set((s) => ({ isSaving: { ...s.isSaving, nas: false } }));
+    }
   },
 
   testProvider: async (name) => {
