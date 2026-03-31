@@ -73,14 +73,14 @@ function ProviderCard({
             </div>
             <div className="flex gap-2">
               <button
-                onClick={onTest}
+                onClick={() => onTest()}
                 disabled={isSaving}
                 className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 disabled:opacity-50"
               >
                 Test Connection
               </button>
               <button
-                onClick={onSave}
+                onClick={() => onSave()}
                 disabled={isSaving}
                 className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
               >
