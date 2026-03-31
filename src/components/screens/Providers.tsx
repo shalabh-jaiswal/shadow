@@ -6,7 +6,7 @@ interface ProviderCardProps {
   title: string;
   description: string;
   enabled: boolean;
-  onToggle: (enabled: boolean) => void;
+  onToggle: (enabled: boolean) => Promise<void>;
   onSave: () => Promise<void>;
   onTest: () => Promise<void>;
   isSaving: boolean;
@@ -79,17 +79,21 @@ function ProviderCard({
               >
                 Test Connection
               </button>
-              <button
-                onClick={onSave}
-                disabled={isSaving}
-                className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
-              >
-                {isSaving ? 'Saving...' : 'Save'}
-              </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* Always visible footer with Save button */}
+      <div className="flex justify-end pt-4 border-t border-gray-200 dark:border-gray-700">
+        <button
+          onClick={onSave}
+          disabled={isSaving}
+          className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+        >
+          {isSaving ? 'Saving...' : 'Save'}
+        </button>
+      </div>
     </div>
   );
 }
@@ -161,7 +165,11 @@ export function Providers() {
           title="Amazon S3"
           description="Back up to Amazon S3 storage"
           enabled={s3.enabled}
-          onToggle={(enabled) => setS3({ ...s3, enabled })}
+          onToggle={async (enabled) => {
+            const updated = { ...s3, enabled };
+            setS3(updated);
+            await saveS3(updated);
+          }}
           onSave={saveS3}
           onTest={() => testProvider('s3')}
           isSaving={isSaving.s3}
@@ -204,7 +212,11 @@ export function Providers() {
           title="Google Cloud Storage"
           description="Back up to Google Cloud Storage"
           enabled={gcs.enabled}
-          onToggle={(enabled) => setGcs({ ...gcs, enabled })}
+          onToggle={async (enabled) => {
+            const updated = { ...gcs, enabled };
+            setGcs(updated);
+            await saveGcs(updated);
+          }}
           onSave={saveGcs}
           onTest={() => testProvider('gcs')}
           isSaving={isSaving.gcs}
@@ -248,7 +260,11 @@ export function Providers() {
           title="Network Attached Storage (NAS)"
           description="Back up to a local NAS or mounted drive"
           enabled={nas.enabled}
-          onToggle={(enabled) => setNas({ ...nas, enabled })}
+          onToggle={async (enabled) => {
+            const updated = { ...nas, enabled };
+            setNas(updated);
+            await saveNas(updated);
+          }}
           onSave={saveNas}
           onTest={() => testProvider('nas')}
           isSaving={isSaving.nas}

@@ -39,9 +39,9 @@ interface ProviderState {
   setGcs: (cfg: GcsConfig) => void;
   setNas: (cfg: NasConfig) => void;
 
-  saveS3: () => Promise<void>;
-  saveGcs: () => Promise<void>;
-  saveNas: () => Promise<void>;
+  saveS3: (cfg?: S3Config) => Promise<void>;
+  saveGcs: (cfg?: GcsConfig) => Promise<void>;
+  saveNas: (cfg?: NasConfig) => Promise<void>;
 
   testProvider: (name: 's3' | 'gcs' | 'nas') => Promise<void>;
 
@@ -65,21 +65,24 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
   setGcs: (cfg) => set({ gcs: cfg }),
   setNas: (cfg) => set({ nas: cfg }),
 
-  saveS3: async () => {
+  saveS3: async (cfg?: S3Config) => {
+    const config = cfg ?? get().s3;
     set((s) => ({ isSaving: { ...s.isSaving, s3: true } }));
-    await providerConfig.saveS3(get().s3);
+    await providerConfig.saveS3(config);
     set((s) => ({ isSaving: { ...s.isSaving, s3: false } }));
   },
 
-  saveGcs: async () => {
+  saveGcs: async (cfg?: GcsConfig) => {
+    const config = cfg ?? get().gcs;
     set((s) => ({ isSaving: { ...s.isSaving, gcs: true } }));
-    await providerConfig.saveGcs(get().gcs);
+    await providerConfig.saveGcs(config);
     set((s) => ({ isSaving: { ...s.isSaving, gcs: false } }));
   },
 
-  saveNas: async () => {
+  saveNas: async (cfg?: NasConfig) => {
+    const config = cfg ?? get().nas;
     set((s) => ({ isSaving: { ...s.isSaving, nas: true } }));
-    await providerConfig.saveNas(get().nas);
+    await providerConfig.saveNas(config);
     set((s) => ({ isSaving: { ...s.isSaving, nas: false } }));
   },
 
