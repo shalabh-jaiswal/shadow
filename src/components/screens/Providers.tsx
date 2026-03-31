@@ -79,21 +79,17 @@ function ProviderCard({
               >
                 Test Connection
               </button>
+              <button
+                onClick={onSave}
+                disabled={isSaving}
+                className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+              >
+                {isSaving ? 'Saving...' : 'Save'}
+              </button>
             </div>
           </div>
         </div>
       )}
-
-      {/* Always visible footer with Save button */}
-      <div className="flex justify-end pt-4 border-t border-gray-200 dark:border-gray-700">
-        <button
-          onClick={onSave}
-          disabled={isSaving}
-          className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
-        >
-          {isSaving ? 'Saving...' : 'Save'}
-        </button>
-      </div>
     </div>
   );
 }
