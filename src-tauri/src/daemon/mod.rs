@@ -1,4 +1,5 @@
 pub mod debouncer;
+pub mod filter;
 pub mod hasher;
 pub mod queue;
 pub mod reconciler;

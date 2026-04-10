@@ -40,6 +40,25 @@ pub async fn start(
     };
 
     while let Some(path) = rx.recv().await {
+        // Skip 0-byte files — these are transient placeholders (e.g. the Windows
+        // "New Text Document.txt" created before the user renames/writes to it).
+        // A Modify event will fire once the user actually writes content.
+        match tokio::fs::metadata(&path).await {
+            Ok(meta) if meta.len() == 0 => {
+                emit_file_event(
+                    &app_handle,
+                    "file_skipped",
+                    FileEvent {
+                        path: path.to_string_lossy().to_string(),
+                        provider: None,
+                        error: None,
+                    },
+                );
+                continue;
+            }
+            _ => {}
+        }
+
         match hasher::check_and_hash(&db, &path).await {
             Ok(HashCheckResult::Unchanged) => {
                 emit_file_event(

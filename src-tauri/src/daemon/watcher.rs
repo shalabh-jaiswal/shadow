@@ -1,3 +1,4 @@
+use crate::daemon::filter;
 use anyhow::Result;
 use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::Path;
@@ -9,7 +10,11 @@ pub fn create(tx: mpsc::Sender<notify::Event>) -> Result<RecommendedWatcher> {
             Ok(event) => {
                 let relevant = matches!(event.kind, EventKind::Create(_) | EventKind::Modify(_));
                 if relevant {
-                    let _ = tx.blocking_send(event);
+                    // Drop events for temp/junk files before allocating debounce timers.
+                    let all_ignored = event.paths.iter().all(|p| filter::should_ignore(p));
+                    if !all_ignored {
+                        let _ = tx.blocking_send(event);
+                    }
                 }
             }
             Err(e) => {

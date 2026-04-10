@@ -8,6 +8,7 @@ use tokio::sync::mpsc;
 use walkdir::WalkDir;
 
 use crate::config::SharedConfig;
+use crate::daemon::filter;
 
 #[derive(Clone, serde::Serialize)]
 pub struct ScanProgressPayload {
@@ -64,6 +65,7 @@ async fn run_scan(
             .into_iter()
             .filter_map(|e| e.ok())
             .filter(|e| e.file_type().is_file())
+            .filter(|e| !filter::should_ignore(e.path()))
             .map(|e| e.into_path())
             .collect()
     })
