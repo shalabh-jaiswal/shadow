@@ -46,11 +46,21 @@ export function ActivityFeed({ entries }: ActivityFeedProps) {
         >
           <StatusIcon status={entry.status} />
           <div className="flex-1 min-w-0">
-            <div className="font-medium text-gray-900 dark:text-white truncate">
-              {entry.filename}
+            <div className="font-medium text-gray-900 dark:text-white flex items-center gap-2 truncate">
+              <span className="text-xs uppercase tracking-wider font-semibold text-gray-500 dark:text-gray-400">
+                {entry.status.replace('_', ' ')}
+              </span>
+              <span className="truncate">{entry.filename}</span>
             </div>
-            <div className="text-gray-600 dark:text-gray-400 truncate">
-              {entry.path}
+            <div className="text-gray-600 dark:text-gray-400 truncate text-xs mt-0.5">
+              {(entry.status === 'renamed' || entry.status === 'rename_error') && entry.old_path ? (
+                <>
+                  <span className="line-through opacity-70 mr-1">{entry.old_path}</span>
+                  → {entry.new_path || entry.path}
+                </>
+              ) : (
+                entry.path
+              )}
             </div>
             {entry.error && (
               <div className="text-red-600 dark:text-red-400 text-xs mt-1">

@@ -56,11 +56,11 @@ pub struct DaemonConfig {
     pub follow_symlinks: bool,
     #[serde(default)]
     pub start_on_login: bool,
-    #[serde(default = "default_reconcile_interval")]
-    pub reconcile_interval_mins: u64,
+    #[serde(default = "default_scan_interval")]
+    pub scan_interval_mins: u64,
 }
 
-fn default_reconcile_interval() -> u64 {
+fn default_scan_interval() -> u64 {
     60
 }
 
@@ -72,7 +72,7 @@ impl Default for DaemonConfig {
             log_level: "info".into(),
             follow_symlinks: false,
             start_on_login: false,
-            reconcile_interval_mins: default_reconcile_interval(),
+            scan_interval_mins: default_scan_interval(),
         }
     }
 }

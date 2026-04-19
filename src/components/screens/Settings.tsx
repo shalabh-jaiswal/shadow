@@ -67,6 +67,15 @@ function TextInput({ label, value, onChange, placeholder, description }: TextInp
   );
 }
 
+const SCAN_INTERVAL_OPTIONS = [
+  { label: 'Disabled', value: 0 },
+  { label: 'Every 15 minutes', value: 15 },
+  { label: 'Every 30 minutes', value: 30 },
+  { label: 'Every hour', value: 60 },
+  { label: 'Every 6 hours', value: 360 },
+  { label: 'Every 24 hours', value: 1440 },
+] as const;
+
 export function Settings() {
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -260,15 +269,6 @@ export function Settings() {
             description="Maximum number of simultaneous uploads"
           />
 
-          <NumberInput
-            label="Reconciliation interval"
-            value={config.daemon.reconcile_interval_mins}
-            onChange={(reconcile_interval_mins) => updateDaemon({ reconcile_interval_mins })}
-            min={5}
-            suffix="minutes"
-            description="How often Shadow re-scans watched folders to retry failed uploads"
-          />
-
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Log Level
@@ -296,6 +296,38 @@ export function Settings() {
             <label className="ml-2 block text-sm text-gray-700 dark:text-gray-300">
               Follow symbolic links
             </label>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+          Backup Schedule
+        </h2>
+        <div className="space-y-6">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Periodic Scan Interval
+            </label>
+            <select
+              value={config.daemon.scan_interval_mins}
+              onChange={(e) => updateDaemon({ scan_interval_mins: Number(e.target.value) })}
+              className="w-64 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
+            >
+              {SCAN_INTERVAL_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+            {config.daemon.scan_interval_mins > 0 && (
+              <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">
+                Scheduled scan: Next scan in {config.daemon.scan_interval_mins} minutes (approximate)
+              </p>
+            )}
+            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+              How often Shadow runs a full recovery scan across all watched folders.
+            </p>
           </div>
         </div>
       </div>

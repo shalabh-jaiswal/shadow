@@ -265,12 +265,24 @@ pub async fn set_daemon_config(
     daemon: DaemonConfig,
     machine: MachineConfig,
     state: State<'_, DaemonHandle>,
+    app: AppHandle,
 ) -> Result<(), String> {
+    // Apply autostart setting
+    if let Err(e) = crate::daemon::apply_autostart_setting(&app, daemon.start_on_login).await {
+        tracing::error!(error = %e, "Failed to apply autostart setting");
+    }
+
     let handle = state.0.lock().await;
     let mut cfg = handle.config.write().await;
     cfg.daemon = daemon;
     cfg.machine = machine;
     config::save(&cfg).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn trigger_recovery_scan(state: State<'_, DaemonHandle>) -> Result<(), String> {
+    let daemon = state.0.lock().await;
+    daemon.trigger_manual_scan().await.map_err(|e| e.to_string())
 }
 
 /// Return a live snapshot of upload counters.

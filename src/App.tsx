@@ -7,6 +7,7 @@ import { Settings } from './components/screens/Settings';
 import { About } from './components/screens/About';
 import { useFoldersStore } from './store/foldersStore';
 import { useProviderStore } from './store/providerStore';
+import { useActivityFeed } from './hooks/useActivityFeed';
 
 type Screen = 'dashboard' | 'folders' | 'providers' | 'settings' | 'about';
 
@@ -14,6 +15,9 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>('dashboard');
   const fetchFolders = useFoldersStore((s) => s.fetchFolders);
   const loadProviders = useProviderStore((s) => s.load);
+
+  // Subscribe to activity events globally
+  useActivityFeed();
 
   useEffect(() => {
     fetchFolders();

@@ -100,6 +100,7 @@ pub fn run() {
             ipc::set_provider_config,
             ipc::get_config,
             ipc::set_daemon_config,
+            ipc::trigger_recovery_scan,
             ipc::get_stats,
             ipc::clear_hash_store,
             ipc::set_paused,

@@ -10,12 +10,30 @@ use walkdir::WalkDir;
 use crate::config::SharedConfig;
 use crate::daemon::filter;
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ScanTrigger {
+    Initial,
+    Manual,
+    Scheduled,
+}
+
+impl ScanTrigger {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ScanTrigger::Initial => "initial",
+            ScanTrigger::Manual => "manual",
+            ScanTrigger::Scheduled => "scheduled",
+        }
+    }
+}
+
 #[derive(Clone, serde::Serialize)]
 pub struct ScanProgressPayload {
     pub folder: String,
     pub scanned: u64,
     pub queued: u64,
     pub total: u64, // 0 means unknown (emit as we go)
+    pub trigger: String,
 }
 
 #[derive(Clone, serde::Serialize)]
@@ -23,6 +41,54 @@ pub struct ScanCompletePayload {
     pub folder: String,
     pub total_files: u64,
     pub total_bytes: u64,
+    pub files_uploaded: u64, // We will use queued as a proxy for uploaded for now to match UI expectations
+    pub files_skipped: u64,
+    pub trigger: String,
+}
+
+/// Start a full scan across all watched folders
+pub async fn scan_all_folders(
+    config: &SharedConfig,
+    db: &Db,
+    tx: &mpsc::Sender<PathBuf>,
+    app_handle: &AppHandle,
+    trigger: ScanTrigger,
+) {
+    let watched_folders = {
+        let cfg = config.read().await;
+        cfg.watched_folders.paths.clone()
+    };
+
+    for folder in &watched_folders {
+        let folder_path = PathBuf::from(folder);
+        if folder_path.exists() {
+            let mode_key = format!("folder_mode:{folder}");
+            let mode = db
+                .get(mode_key.as_bytes())
+                .ok()
+                .flatten()
+                .and_then(|v| std::str::from_utf8(&v).ok().map(|s| s.to_string()))
+                .unwrap_or_else(|| "full".to_string());
+
+            if mode == "forward_only" {
+                continue;
+            }
+
+            // run_scan blocks asynchronously on folder completion so we can await it
+            // or we could spawn it. Since this is scan_all_folders we await each sequentially
+            // to not overwhelm the system
+            if let Err(e) = run_scan(
+                folder_path,
+                config.clone(),
+                db.clone(),
+                tx.clone(),
+                app_handle.clone(),
+                trigger,
+            ).await {
+                tracing::error!(folder = %folder, error = %e, "folder scan failed");
+            }
+        }
+    }
 }
 
 /// Spawn a background scan of `folder_path`.
@@ -34,10 +100,11 @@ pub fn spawn_scan(
     db: Db,
     tx: mpsc::Sender<PathBuf>,
     app: AppHandle,
+    trigger: ScanTrigger,
 ) {
     tokio::spawn(async move {
-        if let Err(e) = run_scan(folder_path, cfg, db, tx, app).await {
-            tracing::error!(error = %e, "initial folder scan failed");
+        if let Err(e) = run_scan(folder_path, cfg, db, tx, app, trigger).await {
+            tracing::error!(error = %e, "folder scan failed");
         }
     });
 }
@@ -48,9 +115,11 @@ async fn run_scan(
     db: Db,
     tx: mpsc::Sender<PathBuf>,
     app: AppHandle,
+    trigger: ScanTrigger,
 ) -> Result<()> {
     let folder_str = folder_path.to_string_lossy().to_string();
     let follow_symlinks = cfg.read().await.daemon.follow_symlinks;
+    let trigger_str = trigger.as_str().to_string();
 
     let mut scanned: u64 = 0;
     let mut queued: u64 = 0;
@@ -81,6 +150,7 @@ async fn run_scan(
             scanned: 0,
             queued: 0,
             total,
+            trigger: trigger_str.clone(),
         },
     );
 
@@ -113,11 +183,14 @@ async fn run_scan(
                     scanned,
                     queued,
                     total,
+                    trigger: trigger_str.clone(),
                 },
             );
             last_emit = Instant::now();
         }
     }
+
+    let files_skipped = total.saturating_sub(queued);
 
     // Final progress + complete
     let _ = app.emit(
@@ -127,6 +200,7 @@ async fn run_scan(
             scanned,
             queued,
             total,
+            trigger: trigger_str.clone(),
         },
     );
     let _ = app.emit(
@@ -135,6 +209,9 @@ async fn run_scan(
             folder: folder_str,
             total_files: scanned,
             total_bytes,
+            files_uploaded: queued,
+            files_skipped,
+            trigger: trigger_str.clone(),
         },
     );
 

@@ -2,7 +2,6 @@ pub mod debouncer;
 pub mod filter;
 pub mod hasher;
 pub mod queue;
-pub mod reconciler;
 pub mod renamer;
 pub mod scanner;
 pub mod stats;
@@ -14,10 +13,12 @@ use anyhow::Result;
 use notify::RecommendedWatcher;
 use sled::Db;
 use std::path::{Path, PathBuf};
-use std::sync::{atomic::AtomicBool, Arc};
+use std::sync::{atomic::{AtomicBool, Ordering}, Arc};
+use std::time::Duration;
 use tauri::AppHandle;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
+use tauri_plugin_autostart::ManagerExt;
 
 pub use stats::DaemonStats;
 
@@ -33,6 +34,35 @@ pub struct DaemonState {
     pub stats: DaemonStats,
     /// Atomic flag to pause/resume backup processing.
     pub paused: Arc<AtomicBool>,
+    /// Atomic flag to prevent concurrent manual/scheduled scans.
+    pub is_scanning: Arc<AtomicBool>,
+}
+
+pub async fn apply_autostart_setting(
+    app: &tauri::AppHandle,
+    enabled: bool,
+) -> anyhow::Result<()> {
+    let autostart = app.autolaunch();
+    if enabled {
+        autostart.enable()?;
+    } else {
+        autostart.disable()?;
+    }
+    Ok(())
+}
+
+pub async fn ensure_autostart(
+    app: &tauri::AppHandle,
+    config: &SharedConfig,
+) -> anyhow::Result<()> {
+    let autostart = app.autolaunch();
+    let cfg = config.read().await;
+    
+    if cfg.daemon.start_on_login && !autostart.is_enabled()? {
+        tracing::info!("First launch — registering autostart");
+        autostart.enable()?;
+    }
+    Ok(())
 }
 
 pub async fn start(config: SharedConfig, app_handle: AppHandle) -> Result<DaemonState> {
@@ -42,6 +72,12 @@ pub async fn start(config: SharedConfig, app_handle: AppHandle) -> Result<Daemon
     let db = hasher::open_db()?;
     let stats = DaemonStats::load(&db);
     let paused = Arc::new(AtomicBool::new(false));
+    let is_scanning = Arc::new(AtomicBool::new(false));
+
+    // First launch autostart registration
+    if let Err(e) = ensure_autostart(&app_handle, &config).await {
+        tracing::warn!(error = %e, "Failed to ensure autostart setting");
+    }
 
     // Build provider list from config
     let providers: Vec<DynProvider> = {
@@ -65,6 +101,8 @@ pub async fn start(config: SharedConfig, app_handle: AppHandle) -> Result<Daemon
         p
     };
 
+    let mut task_handles = Vec::new();
+
     // Spawn queue worker pool
     let queue_handle = {
         let db = db.clone();
@@ -81,6 +119,7 @@ pub async fn start(config: SharedConfig, app_handle: AppHandle) -> Result<Daemon
             stats,
         ))
     };
+    task_handles.push(queue_handle);
 
     // Spawn rename worker
     let renamer_handle = {
@@ -97,6 +136,7 @@ pub async fn start(config: SharedConfig, app_handle: AppHandle) -> Result<Daemon
             app_handle,
         ))
     };
+    task_handles.push(renamer_handle);
 
     // Create watcher → debouncer channel
     let (watcher_tx, watcher_rx) = mpsc::channel::<notify::Event>(256);
@@ -113,20 +153,53 @@ pub async fn start(config: SharedConfig, app_handle: AppHandle) -> Result<Daemon
             paused_ref,
         ))
     };
+    task_handles.push(debouncer_handle);
 
-    // Spawn reconciler
-    let reconciler_handle = {
-        let tx = upload_tx.clone();
-        let db = db.clone();
-        let config = config.clone();
-        let paused_ref = paused.clone();
-        let app_handle = app_handle.clone();
-        tokio::spawn(async move {
-            if let Err(e) = reconciler::start(tx, db, config, paused_ref, app_handle).await {
-                tracing::error!(error = %e, "reconciler task exited with error");
+    // Spawn periodic scheduled scan task
+    let scan_interval_mins = config.read().await.daemon.scan_interval_mins;
+    if scan_interval_mins > 0 {
+        let interval_secs = scan_interval_mins * 60;
+        let config_clone = config.clone();
+        let db_clone = db.clone();
+        let tx_clone = upload_tx.clone();
+        let app_handle_clone = app_handle.clone();
+        let paused_clone = paused.clone();
+        let is_scanning_clone = is_scanning.clone();
+
+        let scheduled_scan_handle = tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(interval_secs));
+            interval.tick().await; // consume immediate first tick
+            
+            loop {
+                interval.tick().await;
+                
+                if paused_clone.load(Ordering::Relaxed) {
+                    continue;
+                }
+                
+                if is_scanning_clone.load(Ordering::SeqCst) {
+                    tracing::info!("Skipping periodic scan: a scan is already in progress");
+                    continue;
+                }
+                
+                tracing::info!(
+                    "Periodic scan triggered (interval: {}min)", 
+                    config_clone.read().await.daemon.scan_interval_mins
+                );
+                
+                is_scanning_clone.store(true, Ordering::SeqCst);
+                scanner::scan_all_folders(
+                    &config_clone,
+                    &db_clone,
+                    &tx_clone,
+                    &app_handle_clone,
+                    scanner::ScanTrigger::Scheduled,
+                ).await;
+                is_scanning_clone.store(false, Ordering::SeqCst);
             }
-        })
-    };
+        });
+        task_handles.push(scheduled_scan_handle);
+    }
 
     // Create notify watcher
     let mut notify_watcher = watcher::create(watcher_tx)?;
@@ -148,11 +221,12 @@ pub async fn start(config: SharedConfig, app_handle: AppHandle) -> Result<Daemon
         config,
         app_handle,
         upload_tx,
-        task_handles: vec![queue_handle, renamer_handle, debouncer_handle, reconciler_handle],
+        task_handles,
         watcher: Some(notify_watcher),
         db,
         stats,
         paused,
+        is_scanning,
     })
 }
 
@@ -183,7 +257,37 @@ impl DaemonState {
             self.db.clone(),
             self.upload_tx.clone(),
             self.app_handle.clone(),
+            scanner::ScanTrigger::Initial,
         );
+    }
+
+    pub async fn trigger_manual_scan(&self) -> anyhow::Result<()> {
+        // Prevent concurrent manual scans
+        if self.is_scanning.load(Ordering::SeqCst) {
+            return Err(anyhow::anyhow!("A scan is already in progress"));
+        }
+        
+        tracing::info!("Manual recovery scan triggered by user");
+        
+        let config = self.config.clone();
+        let db = self.db.clone();
+        let tx = self.upload_tx.clone();
+        let app_handle = self.app_handle.clone();
+        let is_scanning = self.is_scanning.clone();
+        
+        tokio::spawn(async move {
+            is_scanning.store(true, Ordering::SeqCst);
+            scanner::scan_all_folders(
+                &config,
+                &db,
+                &tx,
+                &app_handle,
+                scanner::ScanTrigger::Manual,
+            ).await;
+            is_scanning.store(false, Ordering::SeqCst);
+        });
+        
+        Ok(())
     }
 }
 

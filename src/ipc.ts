@@ -13,6 +13,8 @@ import type {
   NasConfig,
   ProviderStatusEvent,
   S3Config,
+  ScanProgressPayload,
+  ScanCompletePayload,
 } from './types';
 
 // ── Commands ──────────────────────────────────────────────────────────────────
@@ -42,6 +44,9 @@ export const ipc = {
 
   setDaemonConfig: (daemon: DaemonConfig, machine: MachineConfig): Promise<void> =>
     invoke<void>('set_daemon_config', { daemon, machine }),
+
+  triggerRecoveryScan: (): Promise<void> =>
+    invoke<void>('trigger_recovery_scan'),
 
   getStats: (): Promise<DaemonStats> =>
     invoke<DaemonStats>('get_stats'),
@@ -110,11 +115,11 @@ export const events = {
   onProviderStatus: (cb: (e: ProviderStatusEvent) => void): Promise<UnlistenFn> =>
     listen<ProviderStatusEvent>('provider_status', (e) => cb(e.payload)),
 
-  onReconcileStarted: (cb: (p: { folders: string[] }) => void): Promise<UnlistenFn> =>
-    listen('reconcile_started', e => cb(e.payload as { folders: string[] })),
+  onScanProgress: (cb: (e: ScanProgressPayload) => void): Promise<UnlistenFn> =>
+    listen<ScanProgressPayload>('scan_progress', (e) => cb(e.payload)),
 
-  onReconcileComplete: (cb: (p: { folders: string[], files_queued: number }) => void): Promise<UnlistenFn> =>
-    listen('reconcile_complete', e => cb(e.payload as { folders: string[], files_queued: number })),
+  onScanComplete: (cb: (e: ScanCompletePayload) => void): Promise<UnlistenFn> =>
+    listen<ScanCompletePayload>('scan_complete', (e) => cb(e.payload)),
 
   onFileRenamed: (cb: (e: FileRenamedEvent) => void): Promise<UnlistenFn> =>
     listen<FileRenamedEvent>('file_renamed', (e) => cb(e.payload)),

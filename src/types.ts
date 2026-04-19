@@ -8,7 +8,7 @@ export interface DaemonConfig {
   log_level: string;
   follow_symlinks: boolean;
   start_on_login: boolean;
-  reconcile_interval_mins: number;
+  scan_interval_mins: number;
 }
 
 export interface MachineConfig {
@@ -48,6 +48,23 @@ export interface AppConfig {
 }
 
 // ── IPC event payloads ────────────────────────────────────────────────────────
+
+export interface ScanProgressPayload {
+  folder: string;
+  scanned: number;
+  queued: number;
+  total: number;
+  trigger: 'initial' | 'manual' | 'scheduled';
+}
+
+export interface ScanCompletePayload {
+  folder: string;
+  total_files: number;
+  total_bytes: number;
+  files_uploaded: number;
+  files_skipped: number;
+  trigger: 'initial' | 'manual' | 'scheduled';
+}
 
 export interface FolderStatus {
   path: string;

@@ -1,9 +1,9 @@
 import { useEffect } from 'react';
 import { useActivityStore, selectFiltered, type FilterStatus } from '../../store/activityStore';
 import { useStatsStore } from '../../store/statsStore';
-import { useActivityFeed } from '../../hooks/useActivityFeed';
-import { useReconcileStatus } from '../../hooks/useReconcileStatus';
+import { useScanProgress } from '../../hooks/useScanProgress';
 import { ActivityFeed } from '../shared/ActivityFeed';
+import { ipc } from '../../ipc';
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -18,10 +18,7 @@ export function Dashboard() {
   const filteredEntries = useActivityStore(selectFiltered);
   const filter = useActivityStore((s) => s.filter);
   const setFilter = useActivityStore((s) => s.setFilter);
-  const { isReconciling, lastReconcile } = useReconcileStatus();
-
-  // Subscribe to activity events
-  useActivityFeed();
+  const { isScanning, scanProgress, lastScanSummary, setIsScanning, setLastScanSummary } = useScanProgress();
 
   // Poll stats every 5 seconds
   useEffect(() => {
@@ -29,6 +26,18 @@ export function Dashboard() {
     const interval = setInterval(fetchStats, 5000);
     return () => clearInterval(interval);
   }, [fetchStats]);
+
+  const handleBackupNow = async () => {
+    if (isScanning) return;
+    try {
+      setIsScanning(true);
+      setLastScanSummary(null);
+      await ipc.triggerRecoveryScan();
+    } catch (e) {
+      console.error(e);
+      setIsScanning(false);
+    }
+  };
 
   const filterTabs: { key: FilterStatus; label: string }[] = [
     { key: 'all', label: 'All' },
@@ -39,23 +48,56 @@ export function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-          Dashboard
-        </h1>
-        <p className="text-gray-600 dark:text-gray-400 mt-1">
-          Monitor backup activity and performance
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+            Dashboard
+          </h1>
+          <p className="text-gray-600 dark:text-gray-400 mt-1">
+            Monitor backup activity and performance
+          </p>
+        </div>
+        <button
+          onClick={handleBackupNow}
+          disabled={isScanning}
+          className={`px-4 py-2 rounded-md text-white text-sm font-medium transition-colors ${
+            isScanning
+              ? 'bg-blue-400 cursor-not-allowed'
+              : 'bg-blue-600 hover:bg-blue-700'
+          }`}
+        >
+          {isScanning ? 'Scanning...' : 'Backup Now'}
+        </button>
       </div>
 
-      {/* Reconciliation Status */}
-      {(isReconciling || (lastReconcile && lastReconcile.filesQueued > 0)) && (
-        <div className="text-sm text-gray-600 dark:text-gray-400">
-          {isReconciling ? (
-            'Reconciling watched folders...'
-          ) : lastReconcile && lastReconcile.filesQueued > 0 ? (
-            `Last reconciliation queued ${lastReconcile.filesQueued} files`
-          ) : null}
+      {/* Progress & Summary Banners */}
+      {isScanning && scanProgress && (
+        <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
+          <div className="flex justify-between text-sm text-blue-800 mb-1">
+            <span>
+              {scanProgress.trigger === 'manual' ? 'Manual scan' : scanProgress.trigger === 'scheduled' ? 'Scheduled scan' : 'Scanning'} - {scanProgress.folder}
+            </span>
+            <span>
+              {scanProgress.scanned.toLocaleString()} / {scanProgress.total ? scanProgress.total.toLocaleString() : '?'} files
+            </span>
+          </div>
+          {scanProgress.total > 0 && (
+            <div className="w-full bg-blue-200 rounded-full h-2">
+              <div
+                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${Math.min(100, (scanProgress.scanned / scanProgress.total) * 100)}%` }}
+              ></div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {!isScanning && lastScanSummary && lastScanSummary.trigger === 'manual' && (
+        <div className="p-3 bg-green-50 border border-green-200 rounded-md text-sm text-green-800 flex items-center gap-2">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
+          </svg>
+          Scan complete — {lastScanSummary.files_uploaded.toLocaleString()} uploaded, {lastScanSummary.files_skipped.toLocaleString()} skipped
         </div>
       )}
 

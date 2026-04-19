@@ -1,38 +1,34 @@
-import { useEffect } from 'react';
-import { listen } from '@tauri-apps/api/event';
-import { useFoldersStore } from '../store/foldersStore';
-
-interface ScanProgressPayload {
-  folder: string;
-  scanned: number;
-  queued: number;
-  total: number;
-}
-
-interface ScanCompletePayload {
-  folder: string;
-  total_files: number;
-  total_bytes: number;
-}
+import { useEffect, useState } from 'react';
+import { events } from '../ipc';
+import type { ScanProgressPayload, ScanCompletePayload } from '../types';
 
 export function useScanProgress() {
-  const setScanProgress = useFoldersStore((s) => s.setScanProgress);
-  const clearScanProgress = useFoldersStore((s) => s.clearScanProgress);
+  const [isScanning, setIsScanning] = useState(false);
+  const [scanProgress, setScanProgress] = useState<ScanProgressPayload | null>(null);
+  const [lastScanSummary, setLastScanSummary] = useState<ScanCompletePayload | null>(null);
 
   useEffect(() => {
-    const unlistenProgress = listen<ScanProgressPayload>('scan_progress', (e) => {
-      const { folder, scanned, total } = e.payload;
-      const pct = total > 0 ? Math.round((scanned / total) * 100) : 0;
-      setScanProgress(folder, pct);
+    const unlistenProgress = events.onScanProgress((payload) => {
+      setIsScanning(true);
+      setScanProgress(payload);
     });
 
-    const unlistenComplete = listen<ScanCompletePayload>('scan_complete', (e) => {
-      clearScanProgress(e.payload.folder);
+    const unlistenComplete = events.onScanComplete((payload) => {
+      // The scanner might emit scan_complete multiple times if multiple folders are watched.
+      // However, for UI purposes, we'll just track the last folder's completion.
+      // In a real app, you might want to aggregate these or show when ALL folders finish.
+      // For now, we will clear the scanning state so the progress bar hides,
+      // and show the last scan's summary.
+      setIsScanning(false);
+      setScanProgress(null);
+      setLastScanSummary(payload);
     });
 
     return () => {
       unlistenProgress.then((fn) => fn());
       unlistenComplete.then((fn) => fn());
     };
-  }, [setScanProgress, clearScanProgress]);
+  }, []);
+
+  return { isScanning, scanProgress, lastScanSummary, setIsScanning, setLastScanSummary };
 }
