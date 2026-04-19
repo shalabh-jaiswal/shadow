@@ -49,6 +49,30 @@ pub async fn start(
                     }
                 }
             }
+            // macOS FSEvents emits RenameMode::Any (one path per event, two events per rename).
+            // Determine direction by checking whether the path still exists on disk:
+            //   - missing = source (old path), store as pending
+            //   - present = destination (new path), pair with pending
+            EventKind::Modify(ModifyKind::Name(RenameMode::Any)) => {
+                if let Some(path) = event.paths.into_iter().next() {
+                    if paused.load(Ordering::Relaxed) {
+                        pending_rename_from = None;
+                        continue;
+                    }
+                    if path.exists() {
+                        // New path — pair with pending source if available
+                        if let Some(old) = pending_rename_from.take() {
+                            let _ = rename_tx.send((old, path)).await;
+                        } else {
+                            // No known source; treat as new file
+                            let _ = upload_tx.send(path).await;
+                        }
+                    } else {
+                        // Old path — store and wait for destination event
+                        pending_rename_from = Some(path);
+                    }
+                }
+            }
             _ => {
                 let debounce_ms = config.read().await.daemon.debounce_ms;
                 for path in event.paths {

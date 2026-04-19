@@ -69,6 +69,12 @@ export const ipc = {
 
   openUrl: (url: string): Promise<void> =>
     invoke<void>('open_url', { url }),
+
+  getLogPath: (): Promise<string> =>
+    invoke<string>('get_log_path'),
+
+  openLogFolder: (): Promise<void> =>
+    invoke<void>('open_log_folder'),
 } as const;
 
 // ── Provider config helpers ───────────────────────────────────────────────────

@@ -165,7 +165,7 @@ pub async fn start(
                         stats.record_upload(file_bytes);
                         stats.persist(&db);
                         if let Err(e) = hasher::record_hash(&db, &path, hash) {
-                            eprintln!("[shadow] failed to record hash for {}: {e}", path.display());
+                            tracing::error!(path = %path.display(), error = %e, "failed to record hash after upload");
                         }
                         // Record last-backup timestamp for the parent watched folder,
                         // then emit folder_updated so the frontend re-fetches AFTER
@@ -184,7 +184,7 @@ pub async fn start(
                 });
             }
             Err(e) => {
-                eprintln!("[shadow] hash check error for {}: {e}", path.display());
+                tracing::error!(path = %path.display(), error = %e, "hash check failed");
             }
         }
     }

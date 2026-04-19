@@ -365,6 +365,23 @@ pub async fn open_config_folder(app: AppHandle) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+/// Return the log directory path so the frontend can display it.
+#[tauri::command]
+pub async fn get_log_path() -> Result<String, String> {
+    Ok(crate::logger::log_dir_path())
+}
+
+/// Open the log directory in the OS file manager.
+#[tauri::command]
+pub async fn open_log_folder(app: AppHandle) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    let path = crate::logger::log_dir_path();
+    std::fs::create_dir_all(&path).map_err(|e| e.to_string())?;
+    app.opener()
+        .open_path(&path, None::<&str>)
+        .map_err(|e| e.to_string())
+}
+
 /// Open the data directory (~/.shadow/hashdb/) in the OS file manager.
 #[tauri::command]
 pub async fn open_data_folder(app: AppHandle) -> Result<(), String> {

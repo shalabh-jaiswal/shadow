@@ -98,10 +98,10 @@ impl BackupProvider for GcsProvider {
                     })
                     .await
                 {
-                    eprintln!(
-                        "[shadow] GCS rename: copy succeeded but delete of old key '{}' failed: {}. Old key is now an orphan.",
-                        old_remote_key,
-                        e
+                    tracing::warn!(
+                        old_key = old_remote_key,
+                        error = %e,
+                        "GCS rename: copy succeeded but delete of old key failed — orphan key left behind"
                     );
                 }
                 Ok(())

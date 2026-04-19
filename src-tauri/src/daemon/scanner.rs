@@ -37,7 +37,7 @@ pub fn spawn_scan(
 ) {
     tokio::spawn(async move {
         if let Err(e) = run_scan(folder_path, cfg, db, tx, app).await {
-            eprintln!("[shadow] scan error: {e}");
+            tracing::error!(error = %e, "initial folder scan failed");
         }
     });
 }

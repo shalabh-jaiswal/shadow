@@ -82,10 +82,11 @@ pub async fn start(
 
             if all_ok {
                 if let Err(e) = hasher::rename_hash_entry(&db, &old_path, &new_path) {
-                    eprintln!(
-                        "[shadow] rename_hash_entry failed {} -> {}: {e}",
-                        old_path.display(),
-                        new_path.display()
+                    tracing::error!(
+                        old_path = %old_path.display(),
+                        new_path = %new_path.display(),
+                        error = %e,
+                        "failed to update hash store after rename"
                     );
                 }
             }

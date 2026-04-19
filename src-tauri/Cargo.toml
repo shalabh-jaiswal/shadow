@@ -46,6 +46,9 @@ aws-sdk-s3 = "1"
 google-cloud-storage = "0.22"
 google-cloud-auth = "0.17"
 bytes = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
 
 [dev-dependencies]
 tempfile = "3"

@@ -53,13 +53,13 @@ pub async fn start(config: SharedConfig, app_handle: AppHandle) -> Result<Daemon
         if cfg.s3.enabled && !cfg.s3.bucket.is_empty() {
             match S3Provider::new(&cfg.s3.region, &cfg.s3.bucket, &cfg.s3.profile).await {
                 Ok(provider) => p.push(Arc::new(provider)),
-                Err(e) => eprintln!("[shadow] S3 init failed: {e}"),
+                Err(e) => tracing::error!(error = %e, "S3 provider init failed"),
             }
         }
         if cfg.gcs.enabled && !cfg.gcs.bucket.is_empty() {
             match GcsProvider::new(&cfg.gcs.bucket, &cfg.gcs.credentials_path).await {
                 Ok(provider) => p.push(Arc::new(provider)),
-                Err(e) => eprintln!("[shadow] GCS init failed: {e}"),
+                Err(e) => tracing::error!(error = %e, "GCS provider init failed"),
             }
         }
         p
@@ -123,7 +123,7 @@ pub async fn start(config: SharedConfig, app_handle: AppHandle) -> Result<Daemon
         let app_handle = app_handle.clone();
         tokio::spawn(async move {
             if let Err(e) = reconciler::start(tx, db, config, paused_ref, app_handle).await {
-                eprintln!("[shadow] reconciler error: {e}");
+                tracing::error!(error = %e, "reconciler task exited with error");
             }
         })
     };
@@ -138,7 +138,7 @@ pub async fn start(config: SharedConfig, app_handle: AppHandle) -> Result<Daemon
             let path = Path::new(folder);
             if path.exists() {
                 if let Err(e) = watcher::watch_path(&mut notify_watcher, path) {
-                    eprintln!("[shadow] failed to watch {folder}: {e}");
+                    tracing::error!(folder = %folder, error = %e, "failed to register folder with watcher");
                 }
             }
         }

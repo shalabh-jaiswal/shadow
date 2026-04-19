@@ -75,9 +75,11 @@ export function Settings() {
   const [error, setError] = useState<string | null>(null);
   const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
   const [updateStatus, setUpdateStatus] = useState<string | null>(null);
+  const [logPath, setLogPath] = useState<string | null>(null);
 
   useEffect(() => {
     loadConfig();
+    ipc.getLogPath().then(setLogPath).catch(() => {});
   }, []);
 
   const loadConfig = async () => {
@@ -312,6 +314,23 @@ export function Settings() {
             </button>
             <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
               Remove all cached file hashes. This will cause all files to be re-scanned on next startup.
+            </p>
+          </div>
+
+          <div>
+            <button
+              onClick={() => ipc.openLogFolder().catch((e) => setError(String(e)))}
+              className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700"
+            >
+              Open Log Folder
+            </button>
+            {logPath && (
+              <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 font-mono break-all">
+                {logPath}
+              </p>
+            )}
+            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+              Daily rotating log files. Log level changes take effect on next restart.
             </p>
           </div>
         </div>

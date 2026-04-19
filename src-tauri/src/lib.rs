@@ -1,6 +1,7 @@
 mod config;
 mod daemon;
 mod ipc;
+mod logger;
 mod path_utils;
 mod providers;
 
@@ -14,6 +15,11 @@ pub struct DaemonHandle(pub Mutex<DaemonState>);
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Load config early so log_level is available before the Tauri builder starts.
+    let cfg = config::load().expect("failed to load config");
+    let log_level = cfg.blocking_read().daemon.log_level.clone();
+    let _log_guard = logger::init(&log_level);
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -22,7 +28,7 @@ pub fn run() {
             None,
         ))
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .setup(|app| {
+        .setup(move |app| {
             // Tray menu: Show Window | Pause Backup | --- | Quit Shadow
             let show = MenuItem::with_id(app, "show", "Show Window", true, None::<&str>)?;
             let pause = MenuItem::with_id(app, "pause", "Pause Backup", true, None::<&str>)?;
@@ -70,9 +76,6 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            // Load config
-            let cfg = config::load().expect("failed to load config");
-
             // Start daemon via Tauri's managed async runtime
             let app_handle = app.handle().clone();
             let state = tauri::async_runtime::block_on(daemon::start(cfg, app_handle))
@@ -106,6 +109,8 @@ pub fn run() {
             ipc::open_url,
             ipc::open_config_folder,
             ipc::open_data_folder,
+            ipc::get_log_path,
+            ipc::open_log_folder,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

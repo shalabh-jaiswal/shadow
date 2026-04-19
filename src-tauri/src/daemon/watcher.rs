@@ -18,7 +18,7 @@ pub fn create(tx: mpsc::Sender<notify::Event>) -> Result<RecommendedWatcher> {
                 }
             }
             Err(e) => {
-                eprintln!("[shadow] watcher error: {e}");
+                tracing::error!(error = %e, "filesystem watcher error");
             }
         })?;
     Ok(watcher)
