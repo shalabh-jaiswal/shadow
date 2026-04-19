@@ -1,10 +1,10 @@
 use crate::config::SharedConfig;
 use notify::event::{ModifyKind, RenameMode};
 use notify::{Event, EventKind};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::sync::{atomic::AtomicBool, atomic::Ordering, Arc};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
@@ -16,10 +16,29 @@ pub async fn start(
     paused: Arc<AtomicBool>,
 ) {
     let mut timers: HashMap<PathBuf, JoinHandle<()>> = HashMap::new();
-    // Holds the source path of a RenameMode::From event waiting for its matching To
-    let mut pending_rename_from: Option<PathBuf> = None;
+    
+    // Windows/Linux tracked renames
+    let mut tracked_renames: HashMap<usize, (PathBuf, Instant)> = HashMap::new();
+    // Fallback for single untracked renames
+    let mut pending_rename_from: Option<(PathBuf, Instant)> = None;
+    // macOS FSEvents (RenameMode::Any) FIFO queue
+    let mut macos_renames: VecDeque<(PathBuf, Instant)> = VecDeque::new();
 
     while let Some(event) = rx.recv().await {
+        let now = Instant::now();
+        let timeout = Duration::from_secs(5);
+
+        // Cleanup stale entries
+        tracked_renames.retain(|_, (_, ts)| now.duration_since(*ts) < timeout);
+        if let Some((_, ts)) = &pending_rename_from {
+            if now.duration_since(*ts) >= timeout {
+                pending_rename_from = None;
+            }
+        }
+        macos_renames.retain(|(_, ts)| now.duration_since(*ts) < timeout);
+
+        let tracker = event.tracker();
+
         match event.kind {
             EventKind::Modify(ModifyKind::Name(RenameMode::Both)) => {
                 if event.paths.len() >= 2 {
@@ -32,19 +51,43 @@ pub async fn start(
             }
             EventKind::Modify(ModifyKind::Name(RenameMode::From)) => {
                 if let Some(old) = event.paths.into_iter().next() {
-                    pending_rename_from = Some(old);
+                    if paused.load(Ordering::Relaxed) {
+                        continue;
+                    }
+                    if let Some(id) = tracker {
+                        tracked_renames.insert(id, (old, now));
+                    } else {
+                        pending_rename_from = Some((old, now));
+                    }
                 }
             }
             EventKind::Modify(ModifyKind::Name(RenameMode::To)) => {
                 if let Some(new) = event.paths.into_iter().next() {
                     if !paused.load(Ordering::Relaxed) {
-                        if let Some(old) = pending_rename_from.take() {
+                        let mut paired_old = None;
+                        
+                        if let Some(id) = tracker {
+                            if let Some((old, _)) = tracked_renames.remove(&id) {
+                                paired_old = Some(old);
+                            }
+                        }
+                        
+                        if paired_old.is_none() {
+                            if let Some((old, _)) = pending_rename_from.take() {
+                                paired_old = Some(old);
+                            }
+                        }
+                        
+                        if let Some(old) = paired_old {
                             let _ = rename_tx.send((old, new)).await;
                         } else {
                             // No matching From — treat as a new file
                             let _ = upload_tx.send(new).await;
                         }
                     } else {
+                        if let Some(id) = tracker {
+                            tracked_renames.remove(&id);
+                        }
                         pending_rename_from = None;
                     }
                 }
@@ -56,12 +99,12 @@ pub async fn start(
             EventKind::Modify(ModifyKind::Name(RenameMode::Any)) => {
                 if let Some(path) = event.paths.into_iter().next() {
                     if paused.load(Ordering::Relaxed) {
-                        pending_rename_from = None;
+                        macos_renames.clear();
                         continue;
                     }
                     if path.exists() {
                         // New path — pair with pending source if available
-                        if let Some(old) = pending_rename_from.take() {
+                        if let Some((old, _)) = macos_renames.pop_front() {
                             let _ = rename_tx.send((old, path)).await;
                         } else {
                             // No known source; treat as new file
@@ -69,7 +112,7 @@ pub async fn start(
                         }
                     } else {
                         // Old path — store and wait for destination event
-                        pending_rename_from = Some(path);
+                        macos_renames.push_back((path, now));
                     }
                 }
             }
@@ -249,5 +292,75 @@ mod tests {
         let item = upload_rx.try_recv().unwrap();
         assert_eq!(item, new);
         assert!(rename_rx.try_recv().is_err(), "no rename pair available");
+    }
+
+    #[tokio::test]
+    async fn tracked_interleaved_renames_paired_correctly() {
+        let (watcher_tx, watcher_rx) = mpsc::channel(64);
+        let (upload_tx, mut upload_rx) = mpsc::channel(64);
+        let (rename_tx, mut rename_rx) = mpsc::channel(64);
+        let config = make_config(50);
+        let paused = Arc::new(AtomicBool::new(false));
+
+        tokio::spawn(start(watcher_rx, upload_tx, rename_tx, config, paused));
+
+        let old1 = PathBuf::from("/tmp/old1.txt");
+        let new1 = PathBuf::from("/tmp/new1.txt");
+        let old2 = PathBuf::from("/tmp/old2.txt");
+        let new2 = PathBuf::from("/tmp/new2.txt");
+
+        let mut event1_from = notify::Event {
+            kind: notify::EventKind::Modify(notify::event::ModifyKind::Name(
+                notify::event::RenameMode::From,
+            )),
+            paths: vec![old1.clone()],
+            attrs: Default::default(),
+        };
+        event1_from.attrs.set_tracker(1);
+
+        let mut event2_from = notify::Event {
+            kind: notify::EventKind::Modify(notify::event::ModifyKind::Name(
+                notify::event::RenameMode::From,
+            )),
+            paths: vec![old2.clone()],
+            attrs: Default::default(),
+        };
+        event2_from.attrs.set_tracker(2);
+
+        let mut event1_to = notify::Event {
+            kind: notify::EventKind::Modify(notify::event::ModifyKind::Name(
+                notify::event::RenameMode::To,
+            )),
+            paths: vec![new1.clone()],
+            attrs: Default::default(),
+        };
+        event1_to.attrs.set_tracker(1);
+
+        let mut event2_to = notify::Event {
+            kind: notify::EventKind::Modify(notify::event::ModifyKind::Name(
+                notify::event::RenameMode::To,
+            )),
+            paths: vec![new2.clone()],
+            attrs: Default::default(),
+        };
+        event2_to.attrs.set_tracker(2);
+
+        // Send out of order: From1, From2, To2, To1
+        watcher_tx.send(event1_from).await.unwrap();
+        watcher_tx.send(event2_from).await.unwrap();
+        watcher_tx.send(event2_to).await.unwrap();
+        watcher_tx.send(event1_to).await.unwrap();
+
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        let mut pairs = Vec::new();
+        while let Ok(pair) = rename_rx.try_recv() {
+            pairs.push(pair);
+        }
+
+        assert_eq!(pairs.len(), 2);
+        assert!(pairs.contains(&(old1, new1)));
+        assert!(pairs.contains(&(old2, new2)));
+        assert!(upload_rx.try_recv().is_err());
     }
 }
