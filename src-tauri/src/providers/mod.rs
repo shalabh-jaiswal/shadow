@@ -5,6 +5,7 @@ use std::sync::Arc;
 pub trait BackupProvider: Send + Sync {
     fn name(&self) -> &'static str;
     async fn upload(&self, local_path: &Path, remote_key: &str) -> anyhow::Result<()>;
+    async fn rename(&self, old_remote_key: &str, new_remote_key: &str) -> anyhow::Result<()>;
     async fn test_connection(&self) -> anyhow::Result<String>;
 }
 

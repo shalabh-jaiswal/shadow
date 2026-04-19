@@ -80,7 +80,7 @@ export interface DaemonStats {
 
 // ── Activity feed ─────────────────────────────────────────────────────────────
 
-export type ActivityStatus = 'queued' | 'uploading' | 'uploaded' | 'skipped' | 'error' | 'failed';
+export type ActivityStatus = 'queued' | 'uploading' | 'uploaded' | 'skipped' | 'error' | 'failed' | 'renamed' | 'rename_error';
 
 export interface ActivityEntry {
   id: string;
@@ -91,4 +91,22 @@ export interface ActivityEntry {
   filename: string;
   provider: string | null;
   error: string | null;
+  /** Populated for renamed/rename_error events. */
+  old_path?: string;
+  new_path?: string;
+}
+
+export interface FileRenamedEvent {
+  old_path: string;
+  new_path: string;
+  provider: string;
+  old_remote_key: string;
+  new_remote_key: string;
+}
+
+export interface FileRenameErrorEvent {
+  old_path: string;
+  new_path: string;
+  provider: string;
+  error: string;
 }

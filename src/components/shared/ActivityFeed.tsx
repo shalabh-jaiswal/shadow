@@ -20,6 +20,8 @@ function StatusIcon({ status }: { status: ActivityEntry['status'] }) {
     failed: { icon: '✗', color: 'text-red-500' },
     uploading: { icon: '↑', color: 'text-blue-500' },
     queued: { icon: '…', color: 'text-gray-500' },
+    renamed: { icon: '↔', color: 'text-blue-400' },
+    rename_error: { icon: '✗', color: 'text-red-500' },
   } as const;
 
   const { icon, color } = config[status];

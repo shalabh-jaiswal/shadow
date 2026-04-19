@@ -5,6 +5,8 @@ import type {
   DaemonConfig,
   DaemonStats,
   FileEvent,
+  FileRenameErrorEvent,
+  FileRenamedEvent,
   FolderStatus,
   GcsConfig,
   MachineConfig,
@@ -107,4 +109,10 @@ export const events = {
 
   onReconcileComplete: (cb: (p: { folders: string[], files_queued: number }) => void): Promise<UnlistenFn> =>
     listen('reconcile_complete', e => cb(e.payload as { folders: string[], files_queued: number })),
+
+  onFileRenamed: (cb: (e: FileRenamedEvent) => void): Promise<UnlistenFn> =>
+    listen<FileRenamedEvent>('file_renamed', (e) => cb(e.payload)),
+
+  onFileRenameError: (cb: (e: FileRenameErrorEvent) => void): Promise<UnlistenFn> =>
+    listen<FileRenameErrorEvent>('file_rename_error', (e) => cb(e.payload)),
 } as const;

@@ -1,5 +1,6 @@
 use crate::config::SharedConfig;
-use notify::Event;
+use notify::event::{ModifyKind, RenameMode};
+use notify::{Event, EventKind};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{atomic::AtomicBool, atomic::Ordering, Arc};
@@ -10,32 +11,62 @@ use tokio::task::JoinHandle;
 pub async fn start(
     mut rx: mpsc::Receiver<Event>,
     upload_tx: mpsc::Sender<PathBuf>,
+    rename_tx: mpsc::Sender<(PathBuf, PathBuf)>,
     config: SharedConfig,
     paused: Arc<AtomicBool>,
 ) {
     let mut timers: HashMap<PathBuf, JoinHandle<()>> = HashMap::new();
+    // Holds the source path of a RenameMode::From event waiting for its matching To
+    let mut pending_rename_from: Option<PathBuf> = None;
 
     while let Some(event) = rx.recv().await {
-        let debounce_ms = config.read().await.daemon.debounce_ms;
-
-        for path in event.paths {
-            // abort any existing pending timer for this path
-            if let Some(handle) = timers.remove(&path) {
-                handle.abort();
-            }
-
-            let tx = upload_tx.clone();
-            let p = path.clone();
-            let paused_ref = paused.clone();
-            let handle = tokio::spawn(async move {
-                tokio::time::sleep(Duration::from_millis(debounce_ms)).await;
-                // Check if backup is paused before sending to upload queue
-                if !paused_ref.load(Ordering::Relaxed) {
-                    let _ = tx.send(p).await;
+        match event.kind {
+            EventKind::Modify(ModifyKind::Name(RenameMode::Both)) => {
+                if event.paths.len() >= 2 {
+                    let old = event.paths[0].clone();
+                    let new = event.paths[1].clone();
+                    if !paused.load(Ordering::Relaxed) {
+                        let _ = rename_tx.send((old, new)).await;
+                    }
                 }
-            });
-
-            timers.insert(path, handle);
+            }
+            EventKind::Modify(ModifyKind::Name(RenameMode::From)) => {
+                if let Some(old) = event.paths.into_iter().next() {
+                    pending_rename_from = Some(old);
+                }
+            }
+            EventKind::Modify(ModifyKind::Name(RenameMode::To)) => {
+                if let Some(new) = event.paths.into_iter().next() {
+                    if !paused.load(Ordering::Relaxed) {
+                        if let Some(old) = pending_rename_from.take() {
+                            let _ = rename_tx.send((old, new)).await;
+                        } else {
+                            // No matching From — treat as a new file
+                            let _ = upload_tx.send(new).await;
+                        }
+                    } else {
+                        pending_rename_from = None;
+                    }
+                }
+            }
+            _ => {
+                let debounce_ms = config.read().await.daemon.debounce_ms;
+                for path in event.paths {
+                    if let Some(handle) = timers.remove(&path) {
+                        handle.abort();
+                    }
+                    let tx = upload_tx.clone();
+                    let p = path.clone();
+                    let paused_ref = paused.clone();
+                    let handle = tokio::spawn(async move {
+                        tokio::time::sleep(Duration::from_millis(debounce_ms)).await;
+                        if !paused_ref.load(Ordering::Relaxed) {
+                            let _ = tx.send(p).await;
+                        }
+                    });
+                    timers.insert(path, handle);
+                }
+            }
         }
     }
     // rx closed — all pending timer handles are dropped (aborted) here
@@ -66,14 +97,14 @@ mod tests {
     async fn coalesces_rapid_events() {
         let (watcher_tx, watcher_rx) = mpsc::channel(64);
         let (upload_tx, mut upload_rx) = mpsc::channel(64);
-        let config = make_config(50); // 50ms debounce for fast test
+        let (rename_tx, _rename_rx) = mpsc::channel(64);
+        let config = make_config(50);
         let paused = Arc::new(AtomicBool::new(false));
 
-        tokio::spawn(start(watcher_rx, upload_tx, config, paused));
+        tokio::spawn(start(watcher_rx, upload_tx, rename_tx, config, paused));
 
         let path = PathBuf::from("/tmp/test_file.txt");
 
-        // Send 5 rapid events for the same path
         for _ in 0..5 {
             let event = notify::Event {
                 kind: notify::EventKind::Modify(notify::event::ModifyKind::Any),
@@ -83,15 +114,116 @@ mod tests {
             watcher_tx.send(event).await.unwrap();
         }
 
-        // Wait for debounce to settle
         tokio::time::sleep(Duration::from_millis(200)).await;
 
-        // Should have received exactly 1 item
         let item = upload_rx.try_recv().unwrap();
         assert_eq!(item, path);
         assert!(
             upload_rx.try_recv().is_err(),
             "expected only 1 upload, got more"
         );
+    }
+
+    #[tokio::test]
+    async fn rename_both_routes_to_rename_channel() {
+        let (watcher_tx, watcher_rx) = mpsc::channel(64);
+        let (upload_tx, mut upload_rx) = mpsc::channel(64);
+        let (rename_tx, mut rename_rx) = mpsc::channel(64);
+        let config = make_config(50);
+        let paused = Arc::new(AtomicBool::new(false));
+
+        tokio::spawn(start(watcher_rx, upload_tx, rename_tx, config, paused));
+
+        let old = PathBuf::from("/tmp/old.txt");
+        let new = PathBuf::from("/tmp/new.txt");
+
+        let event = notify::Event {
+            kind: notify::EventKind::Modify(notify::event::ModifyKind::Name(
+                notify::event::RenameMode::Both,
+            )),
+            paths: vec![old.clone(), new.clone()],
+            attrs: Default::default(),
+        };
+        watcher_tx.send(event).await.unwrap();
+
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        let (got_old, got_new) = rename_rx.try_recv().unwrap();
+        assert_eq!(got_old, old);
+        assert_eq!(got_new, new);
+        assert!(upload_rx.try_recv().is_err(), "rename must not go to upload");
+    }
+
+    #[tokio::test]
+    async fn rename_from_to_routes_to_rename_channel() {
+        let (watcher_tx, watcher_rx) = mpsc::channel(64);
+        let (upload_tx, mut upload_rx) = mpsc::channel(64);
+        let (rename_tx, mut rename_rx) = mpsc::channel(64);
+        let config = make_config(50);
+        let paused = Arc::new(AtomicBool::new(false));
+
+        tokio::spawn(start(watcher_rx, upload_tx, rename_tx, config, paused));
+
+        let old = PathBuf::from("/tmp/from.txt");
+        let new = PathBuf::from("/tmp/to.txt");
+
+        watcher_tx
+            .send(notify::Event {
+                kind: notify::EventKind::Modify(notify::event::ModifyKind::Name(
+                    notify::event::RenameMode::From,
+                )),
+                paths: vec![old.clone()],
+                attrs: Default::default(),
+            })
+            .await
+            .unwrap();
+
+        watcher_tx
+            .send(notify::Event {
+                kind: notify::EventKind::Modify(notify::event::ModifyKind::Name(
+                    notify::event::RenameMode::To,
+                )),
+                paths: vec![new.clone()],
+                attrs: Default::default(),
+            })
+            .await
+            .unwrap();
+
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        let (got_old, got_new) = rename_rx.try_recv().unwrap();
+        assert_eq!(got_old, old);
+        assert_eq!(got_new, new);
+        assert!(upload_rx.try_recv().is_err(), "rename must not go to upload");
+    }
+
+    #[tokio::test]
+    async fn orphan_to_event_treated_as_upload() {
+        let (watcher_tx, watcher_rx) = mpsc::channel(64);
+        let (upload_tx, mut upload_rx) = mpsc::channel(64);
+        let (rename_tx, mut rename_rx) = mpsc::channel(64);
+        let config = make_config(50);
+        let paused = Arc::new(AtomicBool::new(false));
+
+        tokio::spawn(start(watcher_rx, upload_tx, rename_tx, config, paused));
+
+        let new = PathBuf::from("/tmp/orphan_to.txt");
+
+        watcher_tx
+            .send(notify::Event {
+                kind: notify::EventKind::Modify(notify::event::ModifyKind::Name(
+                    notify::event::RenameMode::To,
+                )),
+                paths: vec![new.clone()],
+                attrs: Default::default(),
+            })
+            .await
+            .unwrap();
+
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        let item = upload_rx.try_recv().unwrap();
+        assert_eq!(item, new);
+        assert!(rename_rx.try_recv().is_err(), "no rename pair available");
     }
 }

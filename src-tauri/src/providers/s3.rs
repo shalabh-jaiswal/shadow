@@ -53,6 +53,41 @@ impl BackupProvider for S3Provider {
         }
     }
 
+    async fn rename(&self, old_remote_key: &str, new_remote_key: &str) -> Result<()> {
+        let copy_source = format!("{}/{}", self.bucket, old_remote_key);
+        match self
+            .client
+            .copy_object()
+            .copy_source(&copy_source)
+            .bucket(&self.bucket)
+            .key(new_remote_key)
+            .send()
+            .await
+        {
+            Ok(_) => {
+                if let Err(e) = self
+                    .client
+                    .delete_object()
+                    .bucket(&self.bucket)
+                    .key(old_remote_key)
+                    .send()
+                    .await
+                {
+                    eprintln!(
+                        "[shadow] S3 rename: copy succeeded but delete of old key '{}' failed: {}. Old key is now an orphan.",
+                        old_remote_key,
+                        e
+                    );
+                }
+                Ok(())
+            }
+            Err(e) => Err(anyhow::anyhow!(
+                "S3 rename failed during copy, old key preserved: {}",
+                e
+            )),
+        }
+    }
+
     async fn test_connection(&self) -> Result<String> {
         self.client
             .head_bucket()

@@ -3,6 +3,7 @@ pub mod filter;
 pub mod hasher;
 pub mod queue;
 pub mod reconciler;
+pub mod renamer;
 pub mod scanner;
 pub mod stats;
 pub mod watcher;
@@ -36,6 +37,7 @@ pub struct DaemonState {
 
 pub async fn start(config: SharedConfig, app_handle: AppHandle) -> Result<DaemonState> {
     let (upload_tx, upload_rx) = mpsc::channel::<std::path::PathBuf>(512);
+    let (rename_tx, rename_rx) = mpsc::channel::<(std::path::PathBuf, std::path::PathBuf)>(256);
 
     let db = hasher::open_db()?;
     let stats = DaemonStats::load(&db);
@@ -69,8 +71,30 @@ pub async fn start(config: SharedConfig, app_handle: AppHandle) -> Result<Daemon
         let config = config.clone();
         let app_handle = app_handle.clone();
         let stats = stats.clone();
+        let providers_for_queue = providers.clone();
         tokio::spawn(queue::start(
-            upload_rx, providers, db, config, app_handle, stats,
+            upload_rx,
+            providers_for_queue,
+            db,
+            config,
+            app_handle,
+            stats,
+        ))
+    };
+
+    // Spawn rename worker
+    let renamer_handle = {
+        let db = db.clone();
+        let config = config.clone();
+        let app_handle = app_handle.clone();
+        let upload_tx_clone = upload_tx.clone();
+        tokio::spawn(renamer::start(
+            rename_rx,
+            upload_tx_clone,
+            providers,
+            db,
+            config,
+            app_handle,
         ))
     };
 
@@ -84,6 +108,7 @@ pub async fn start(config: SharedConfig, app_handle: AppHandle) -> Result<Daemon
         tokio::spawn(debouncer::start(
             watcher_rx,
             upload_tx.clone(),
+            rename_tx,
             config,
             paused_ref,
         ))
@@ -123,7 +148,7 @@ pub async fn start(config: SharedConfig, app_handle: AppHandle) -> Result<Daemon
         config,
         app_handle,
         upload_tx,
-        task_handles: vec![queue_handle, debouncer_handle, reconciler_handle],
+        task_handles: vec![queue_handle, renamer_handle, debouncer_handle, reconciler_handle],
         watcher: Some(notify_watcher),
         db,
         stats,

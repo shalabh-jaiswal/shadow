@@ -16,6 +16,23 @@ pub struct FileEvent {
     pub error: Option<String>,
 }
 
+#[derive(Debug, Serialize, Clone)]
+pub struct FileRenamedEvent {
+    pub old_path: String,
+    pub new_path: String,
+    pub provider: String,
+    pub old_remote_key: String,
+    pub new_remote_key: String,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct FileRenameErrorEvent {
+    pub old_path: String,
+    pub new_path: String,
+    pub provider: String,
+    pub error: String,
+}
+
 pub fn emit_file_event(app_handle: &AppHandle, event: &str, payload: FileEvent) {
     let _ = app_handle.emit(event, payload);
 }

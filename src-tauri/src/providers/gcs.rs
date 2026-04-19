@@ -75,6 +75,44 @@ impl BackupProvider for GcsProvider {
         Ok(())
     }
 
+    async fn rename(&self, old_remote_key: &str, new_remote_key: &str) -> Result<()> {
+        use google_cloud_storage::http::objects::copy::CopyObjectRequest;
+        use google_cloud_storage::http::objects::delete::DeleteObjectRequest;
+
+        let copy_req = CopyObjectRequest {
+            source_bucket: self.bucket.clone(),
+            source_object: old_remote_key.to_string(),
+            destination_bucket: self.bucket.clone(),
+            destination_object: new_remote_key.to_string(),
+            ..Default::default()
+        };
+
+        match self.client.copy_object(&copy_req).await {
+            Ok(_) => {
+                if let Err(e) = self
+                    .client
+                    .delete_object(&DeleteObjectRequest {
+                        bucket: self.bucket.clone(),
+                        object: old_remote_key.to_string(),
+                        ..Default::default()
+                    })
+                    .await
+                {
+                    eprintln!(
+                        "[shadow] GCS rename: copy succeeded but delete of old key '{}' failed: {}. Old key is now an orphan.",
+                        old_remote_key,
+                        e
+                    );
+                }
+                Ok(())
+            }
+            Err(e) => Err(anyhow::anyhow!(
+                "GCS rename failed during copy, old key preserved: {}",
+                e
+            )),
+        }
+    }
+
     async fn test_connection(&self) -> Result<String> {
         // get_bucket requires storage.buckets.get IAM permission, which many
         // service accounts lack (they may only have storage.objects.create).

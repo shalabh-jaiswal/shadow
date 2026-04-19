@@ -39,6 +39,21 @@ pub async fn check_and_hash(db: &Db, path: &Path) -> Result<HashCheckResult> {
     .await?
 }
 
+pub fn has_entry(db: &Db, path: &Path) -> Result<bool> {
+    let key = path_key(path);
+    Ok(db.get(key)?.is_some())
+}
+
+pub fn rename_hash_entry(db: &Db, old_path: &Path, new_path: &Path) -> Result<()> {
+    let old_key = path_key(old_path);
+    if let Some(hash_value) = db.get(&old_key)? {
+        let new_key = path_key(new_path);
+        db.insert(new_key, hash_value)?;
+        db.remove(&old_key)?;
+    }
+    Ok(())
+}
+
 pub fn record_hash(db: &Db, path: &Path, hash: blake3::Hash) -> Result<()> {
     let key = path_key(path);
     db.insert(key, hash.as_bytes().to_vec())?;
@@ -84,6 +99,57 @@ mod tests {
 
         let result2 = check_and_hash(&db, &file).await.unwrap();
         assert!(matches!(result2, HashCheckResult::Unchanged));
+    }
+
+    #[test]
+    fn has_entry_false_for_unknown_path() {
+        let db = open_test_db();
+        let dir = tempdir().unwrap();
+        let file = dir.path().join("missing.txt");
+        assert!(!has_entry(&db, &file).unwrap());
+    }
+
+    #[tokio::test]
+    async fn has_entry_true_after_record() {
+        let db = open_test_db();
+        let dir = tempdir().unwrap();
+        let file = dir.path().join("test.txt");
+        std::fs::write(&file, b"hello").unwrap();
+
+        if let HashCheckResult::Changed(hash) = check_and_hash(&db, &file).await.unwrap() {
+            record_hash(&db, &file, hash).unwrap();
+        }
+
+        assert!(has_entry(&db, &file).unwrap());
+    }
+
+    #[test]
+    fn rename_hash_entry_moves_key() {
+        let db = open_test_db();
+        let dir = tempdir().unwrap();
+        let old = dir.path().join("old.txt");
+        let new = dir.path().join("new.txt");
+
+        let hash = blake3::hash(b"content");
+        record_hash(&db, &old, hash).unwrap();
+        assert!(has_entry(&db, &old).unwrap());
+
+        rename_hash_entry(&db, &old, &new).unwrap();
+
+        assert!(!has_entry(&db, &old).unwrap(), "old key must be removed");
+        assert!(has_entry(&db, &new).unwrap(), "new key must be present");
+    }
+
+    #[test]
+    fn rename_hash_entry_no_op_for_missing_key() {
+        let db = open_test_db();
+        let dir = tempdir().unwrap();
+        let old = dir.path().join("ghost.txt");
+        let new = dir.path().join("new.txt");
+
+        // Should not error even if old path was never recorded
+        rename_hash_entry(&db, &old, &new).unwrap();
+        assert!(!has_entry(&db, &new).unwrap());
     }
 
     #[tokio::test]

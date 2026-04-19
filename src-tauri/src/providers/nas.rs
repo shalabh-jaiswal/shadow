@@ -42,6 +42,31 @@ impl BackupProvider for NasProvider {
         Ok(())
     }
 
+    async fn rename(&self, old_remote_key: &str, new_remote_key: &str) -> Result<()> {
+        let old_dest = self.mount_path.join(old_remote_key);
+        let new_dest = self.mount_path.join(new_remote_key);
+
+        if !old_dest.exists() {
+            return Ok(());
+        }
+
+        if let Some(parent) = new_dest.parent() {
+            tokio::fs::create_dir_all(parent)
+                .await
+                .context("failed to create destination directories for NAS rename")?;
+        }
+
+        tokio::fs::rename(&old_dest, &new_dest)
+            .await
+            .with_context(|| {
+                format!(
+                    "NAS rename failed: {} -> {}",
+                    old_dest.display(),
+                    new_dest.display()
+                )
+            })
+    }
+
     async fn test_connection(&self) -> Result<String> {
         let meta = tokio::fs::metadata(&self.mount_path)
             .await
