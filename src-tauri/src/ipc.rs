@@ -252,11 +252,13 @@ pub async fn set_provider_config(
                 cfg.s3 = s3;
             }
             "gcs" => {
-                let gcs: GcsConfig = serde_json::from_str(&config_json).map_err(|e| e.to_string())?;
+                let gcs: GcsConfig =
+                    serde_json::from_str(&config_json).map_err(|e| e.to_string())?;
                 cfg.gcs = gcs;
             }
             "nas" => {
-                let nas: NasConfig = serde_json::from_str(&config_json).map_err(|e| e.to_string())?;
+                let nas: NasConfig =
+                    serde_json::from_str(&config_json).map_err(|e| e.to_string())?;
                 cfg.nas = nas;
             }
             _ => return Err(format!("unknown provider: {provider}")),
@@ -299,7 +301,10 @@ pub async fn set_daemon_config(
 #[tauri::command]
 pub async fn trigger_recovery_scan(state: State<'_, DaemonHandle>) -> Result<(), String> {
     let daemon = state.0.lock().await;
-    daemon.trigger_manual_scan().await.map_err(|e| e.to_string())
+    daemon
+        .trigger_manual_scan()
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Return a live snapshot of upload counters.

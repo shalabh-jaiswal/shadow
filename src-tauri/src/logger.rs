@@ -15,7 +15,9 @@ pub fn init(log_level: &str) -> WorkerGuard {
     let file_appender = tracing_appender::rolling::daily(&log_dir, "shadow.log");
     let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
 
-    let level = log_level.parse::<tracing::Level>().unwrap_or(tracing::Level::INFO);
+    let level = log_level
+        .parse::<tracing::Level>()
+        .unwrap_or(tracing::Level::INFO);
     // Only log our own crate at the configured level; silence all third-party crates
     // (AWS SDK, GCS client, etc. log credentials and internal state at INFO which is noise).
     // Log our crate at the configured level; only errors from third-party crates.

@@ -102,7 +102,9 @@ pub async fn scan_all_folders(
                 app_handle.clone(),
                 trigger,
                 added_at,
-            ).await {
+            )
+            .await
+            {
                 Ok(stats) => {
                     aggregate_stats.scanned += stats.scanned;
                     aggregate_stats.queued += stats.queued;
@@ -115,7 +117,9 @@ pub async fn scan_all_folders(
         }
     }
 
-    let files_skipped = aggregate_stats.scanned.saturating_sub(aggregate_stats.queued);
+    let files_skipped = aggregate_stats
+        .scanned
+        .saturating_sub(aggregate_stats.queued);
 
     let _ = app_handle.emit(
         "scan_complete",
@@ -144,7 +148,7 @@ pub fn spawn_scan(
     tokio::spawn(async move {
         let folder_str = folder_path.to_string_lossy().to_string();
         let trigger_str = trigger.as_str().to_string();
-        
+
         let added_at = {
             let key = format!("folder_added_at:{}", folder_str);
             db.get(key.as_bytes())

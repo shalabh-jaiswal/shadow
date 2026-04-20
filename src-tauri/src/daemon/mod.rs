@@ -13,12 +13,15 @@ use anyhow::Result;
 use notify::RecommendedWatcher;
 use sled::Db;
 use std::path::{Path, PathBuf};
-use std::sync::{atomic::{AtomicBool, Ordering}, Arc};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 use std::time::Duration;
 use tauri::AppHandle;
+use tauri_plugin_autostart::ManagerExt;
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
-use tauri_plugin_autostart::ManagerExt;
 
 pub use stats::DaemonStats;
 
@@ -63,10 +66,7 @@ pub async fn build_providers(config: &SharedConfig) -> Vec<DynProvider> {
     p
 }
 
-pub async fn apply_autostart_setting(
-    app: &tauri::AppHandle,
-    enabled: bool,
-) -> anyhow::Result<()> {
+pub async fn apply_autostart_setting(app: &tauri::AppHandle, enabled: bool) -> anyhow::Result<()> {
     let autostart = app.autolaunch();
     if enabled {
         autostart.enable()?;
@@ -76,10 +76,7 @@ pub async fn apply_autostart_setting(
     Ok(())
 }
 
-pub async fn ensure_autostart(
-    app: &tauri::AppHandle,
-    config: &SharedConfig,
-) -> anyhow::Result<()> {
+pub async fn ensure_autostart(app: &tauri::AppHandle, config: &SharedConfig) -> anyhow::Result<()> {
     let autostart = app.autolaunch();
     let cfg = config.read().await;
 
@@ -248,24 +245,24 @@ pub async fn start(config: SharedConfig, app_handle: AppHandle) -> Result<Daemon
         let scheduled_scan_handle = tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(interval_secs));
             interval.tick().await; // consume immediate first tick
-            
+
             loop {
                 interval.tick().await;
-                
+
                 if paused_clone.load(Ordering::Relaxed) {
                     continue;
                 }
-                
+
                 if is_scanning_clone.load(Ordering::SeqCst) {
                     tracing::info!("Skipping periodic scan: a scan is already in progress");
                     continue;
                 }
-                
+
                 tracing::info!(
-                    "Periodic scan triggered (interval: {}min)", 
+                    "Periodic scan triggered (interval: {}min)",
                     config_clone.read().await.daemon.scan_interval_mins
                 );
-                
+
                 is_scanning_clone.store(true, Ordering::SeqCst);
                 scanner::scan_all_folders(
                     &config_clone,
@@ -273,7 +270,8 @@ pub async fn start(config: SharedConfig, app_handle: AppHandle) -> Result<Daemon
                     &tx_clone,
                     &app_handle_clone,
                     scanner::ScanTrigger::Scheduled,
-                ).await;
+                )
+                .await;
                 is_scanning_clone.store(false, Ordering::SeqCst);
             }
         });
@@ -355,27 +353,22 @@ impl DaemonState {
         if self.is_scanning.load(Ordering::SeqCst) {
             return Err(anyhow::anyhow!("A scan is already in progress"));
         }
-        
+
         tracing::info!("Manual recovery scan triggered by user");
-        
+
         let config = self.config.clone();
         let db = self.db.clone();
         let tx = self.upload_tx.clone();
         let app_handle = self.app_handle.clone();
         let is_scanning = self.is_scanning.clone();
-        
+
         tokio::spawn(async move {
             is_scanning.store(true, Ordering::SeqCst);
-            scanner::scan_all_folders(
-                &config,
-                &db,
-                &tx,
-                &app_handle,
-                scanner::ScanTrigger::Manual,
-            ).await;
+            scanner::scan_all_folders(&config, &db, &tx, &app_handle, scanner::ScanTrigger::Manual)
+                .await;
             is_scanning.store(false, Ordering::SeqCst);
         });
-        
+
         Ok(())
     }
 }

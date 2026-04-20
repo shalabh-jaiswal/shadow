@@ -16,7 +16,7 @@ pub async fn start(
     paused: Arc<AtomicBool>,
 ) {
     let mut timers: HashMap<PathBuf, JoinHandle<()>> = HashMap::new();
-    
+
     // Windows/Linux tracked renames
     let mut tracked_renames: HashMap<usize, (PathBuf, Instant)> = HashMap::new();
     // Fallback for single untracked renames
@@ -65,19 +65,19 @@ pub async fn start(
                 if let Some(new) = event.paths.into_iter().next() {
                     if !paused.load(Ordering::Relaxed) {
                         let mut paired_old = None;
-                        
+
                         if let Some(id) = tracker {
                             if let Some((old, _)) = tracked_renames.remove(&id) {
                                 paired_old = Some(old);
                             }
                         }
-                        
+
                         if paired_old.is_none() {
                             if let Some((old, _)) = pending_rename_from.take() {
                                 paired_old = Some(old);
                             }
                         }
-                        
+
                         if let Some(old) = paired_old {
                             let _ = rename_tx.send((old, new)).await;
                         } else {
@@ -218,7 +218,10 @@ mod tests {
         let (got_old, got_new) = rename_rx.try_recv().unwrap();
         assert_eq!(got_old, old);
         assert_eq!(got_new, new);
-        assert!(upload_rx.try_recv().is_err(), "rename must not go to upload");
+        assert!(
+            upload_rx.try_recv().is_err(),
+            "rename must not go to upload"
+        );
     }
 
     #[tokio::test]
@@ -261,7 +264,10 @@ mod tests {
         let (got_old, got_new) = rename_rx.try_recv().unwrap();
         assert_eq!(got_old, old);
         assert_eq!(got_new, new);
-        assert!(upload_rx.try_recv().is_err(), "rename must not go to upload");
+        assert!(
+            upload_rx.try_recv().is_err(),
+            "rename must not go to upload"
+        );
     }
 
     #[tokio::test]
