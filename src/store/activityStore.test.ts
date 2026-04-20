@@ -2,14 +2,14 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { useActivityStore, selectFiltered } from './activityStore';
 import type { ActivityEntry } from '../types';
 
-function makeEntry(id: string, status: ActivityEntry['status'] = 'uploaded'): ActivityEntry {
+function makeEntry(id: string, status: ActivityEntry['status'] = 'uploaded', provider: string = 's3'): ActivityEntry {
   return {
     id,
     timestamp: Date.now(),
     status,
     path: `/files/${id}.txt`,
     filename: `${id}.txt`,
-    provider: 's3',
+    providers: { [provider]: { status, error: null } },
     error: null,
   };
 }
@@ -21,6 +21,25 @@ describe('activityStore', () => {
 
   it('starts with empty entries', () => {
     expect(useActivityStore.getState().entries).toHaveLength(0);
+  });
+
+  it('aggregates multiple providers for the same path', () => {
+    const { addEntry } = useActivityStore.getState();
+    const entry1 = makeEntry('file1', 'uploading', 's3');
+    const entry2 = makeEntry('file1', 'uploaded', 'gcs');
+    // Ensure they have same path for aggregation
+    entry2.path = entry1.path;
+    entry2.filename = entry1.filename;
+
+    addEntry(entry1);
+    addEntry(entry2);
+
+    const entries = useActivityStore.getState().entries;
+    expect(entries).toHaveLength(1);
+    expect(entries[0].providers).toHaveProperty('s3');
+    expect(entries[0].providers).toHaveProperty('gcs');
+    expect(entries[0].providers.s3.status).toBe('uploading');
+    expect(entries[0].providers.gcs.status).toBe('uploaded');
   });
 
   it('prepends new entries (newest first)', () => {

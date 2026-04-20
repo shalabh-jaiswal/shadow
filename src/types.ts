@@ -106,7 +106,9 @@ export interface ActivityEntry {
   path: string;
   /** Basename of the path, for compact display. */
   filename: string;
-  provider: string | null;
+  /** Map of provider name to its specific status for this file. */
+  providers: Record<string, { status: ActivityStatus; error?: string | null }>;
+  /** Global error for the entire file operation (if any). */
   error: string | null;
   /** Populated for renamed/rename_error events. */
   old_path?: string;

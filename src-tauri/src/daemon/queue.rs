@@ -9,13 +9,13 @@ use sled::Db;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
-use tokio::sync::{mpsc, Semaphore};
+use tokio::sync::{mpsc, watch, Semaphore};
 use tokio_retry::strategy::ExponentialBackoff;
 use tokio_retry::Retry;
 
 pub async fn start(
     mut rx: mpsc::Receiver<PathBuf>,
-    providers: Vec<DynProvider>,
+    provider_rx: watch::Receiver<Vec<DynProvider>>,
     db: Db,
     config: SharedConfig,
     app_handle: AppHandle,
@@ -23,7 +23,6 @@ pub async fn start(
 ) {
     let workers = config.read().await.daemon.upload_workers;
     let semaphore = Arc::new(Semaphore::new(workers));
-    let providers = Arc::new(providers);
 
     // Use the user-configured machine name to avoid leaking the real hostname
     // to cloud storage. Fall back to the OS hostname only when not configured.
@@ -84,13 +83,14 @@ pub async fn start(
                 );
 
                 let permit = Arc::clone(&semaphore);
-                let providers = Arc::clone(&providers);
                 let db = db.clone();
                 let app_handle = app_handle.clone();
                 let path = path.clone();
                 let host = host.clone();
                 let stats = stats.clone();
                 let config = Arc::clone(&config);
+                // Snapshot the current provider list at dispatch time.
+                let providers: Vec<DynProvider> = provider_rx.borrow().clone();
 
                 tokio::spawn(async move {
                     let _permit = permit.acquire().await.unwrap();
@@ -104,64 +104,75 @@ pub async fn start(
                     stats.upload_started();
 
                     let rkey = remote_key(&host, &path);
-                    let mut all_ok = true;
 
-                    for provider in providers.iter() {
-                        emit_file_event(
-                            &app_handle,
-                            "file_uploading",
-                            FileEvent {
-                                path: path.to_string_lossy().to_string(),
-                                provider: Some(provider.name().to_string()),
-                                error: None,
-                            },
-                        );
-
-                        match upload_with_retry(provider, &path, &rkey, &app_handle).await {
-                            Ok(()) => {
-                                emit_file_event(
-                                    &app_handle,
-                                    "file_uploaded",
-                                    FileEvent {
-                                        path: path.to_string_lossy().to_string(),
-                                        provider: Some(provider.name().to_string()),
-                                        error: None,
-                                    },
-                                );
-                                let _ = app_handle.emit(
-                                    "provider_status",
-                                    serde_json::json!({
-                                        "provider": provider.name(),
-                                        "status": "ok"
-                                    }),
-                                );
-                            }
-                            Err(e) => {
-                                all_ok = false;
-                                emit_file_event(
-                                    &app_handle,
-                                    "file_failed",
-                                    FileEvent {
-                                        path: path.to_string_lossy().to_string(),
-                                        provider: Some(provider.name().to_string()),
-                                        error: Some(e.to_string()),
-                                    },
-                                );
-                                let _ = app_handle.emit(
-                                    "provider_status",
-                                    serde_json::json!({
-                                        "provider": provider.name(),
-                                        "status": "error",
-                                        "error": e.to_string()
-                                    }),
-                                );
+                    // Upload to all providers in parallel. Each future emits its
+                    // own final status immediately on completion so the UI updates
+                    // per-provider without waiting for slower providers to finish.
+                    let upload_futures = providers.iter().map(|provider| {
+                        let provider = Arc::clone(provider);
+                        let path = path.clone();
+                        let rkey = rkey.clone();
+                        let app_handle = app_handle.clone();
+                        async move {
+                            let name = provider.name().to_string();
+                            emit_file_event(
+                                &app_handle,
+                                "file_uploading",
+                                FileEvent {
+                                    path: path.to_string_lossy().to_string(),
+                                    provider: Some(name.clone()),
+                                    error: None,
+                                },
+                            );
+                            match upload_with_retry(&provider, &path, &rkey, &app_handle).await {
+                                Ok(()) => {
+                                    emit_file_event(
+                                        &app_handle,
+                                        "file_uploaded",
+                                        FileEvent {
+                                            path: path.to_string_lossy().to_string(),
+                                            provider: Some(name.clone()),
+                                            error: None,
+                                        },
+                                    );
+                                    let _ = app_handle.emit(
+                                        "provider_status",
+                                        serde_json::json!({ "provider": name, "status": "ok" }),
+                                    );
+                                    true
+                                }
+                                Err(e) => {
+                                    emit_file_event(
+                                        &app_handle,
+                                        "file_failed",
+                                        FileEvent {
+                                            path: path.to_string_lossy().to_string(),
+                                            provider: Some(name.clone()),
+                                            error: Some(e.to_string()),
+                                        },
+                                    );
+                                    let _ = app_handle.emit(
+                                        "provider_status",
+                                        serde_json::json!({
+                                            "provider": name,
+                                            "status": "error",
+                                            "error": e.to_string()
+                                        }),
+                                    );
+                                    false
+                                }
                             }
                         }
-                    }
+                    });
+                    let results = futures::future::join_all(upload_futures).await;
+                    let any_ok = results.iter().any(|&ok| ok);
 
                     stats.upload_finished();
 
-                    if all_ok {
+                    // Record hash as long as at least one provider succeeded.
+                    // This prevents infinite re-upload loops when one provider is
+                    // permanently broken but others are healthy.
+                    if any_ok {
                         stats.record_upload(file_bytes);
                         stats.persist(&db);
                         if let Err(e) = hasher::record_hash(&db, &path, hash) {

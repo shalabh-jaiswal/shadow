@@ -235,8 +235,8 @@ pub async fn test_provider(
     }
 }
 
-/// Update and persist a provider's configuration block.
-/// The running daemon continues using its current providers until the app restarts.
+/// Update and persist a provider's configuration block, then immediately
+/// rebuild the live provider list so changes take effect without a restart.
 #[tauri::command]
 pub async fn set_provider_config(
     provider: String,
@@ -244,25 +244,27 @@ pub async fn set_provider_config(
     state: State<'_, DaemonHandle>,
 ) -> Result<(), String> {
     let daemon = state.0.lock().await;
-    let mut cfg = daemon.config.write().await;
+    {
+        let mut cfg = daemon.config.write().await;
+        match provider.to_lowercase().as_str() {
+            "s3" => {
+                let s3: S3Config = serde_json::from_str(&config_json).map_err(|e| e.to_string())?;
+                cfg.s3 = s3;
+            }
+            "gcs" => {
+                let gcs: GcsConfig = serde_json::from_str(&config_json).map_err(|e| e.to_string())?;
+                cfg.gcs = gcs;
+            }
+            "nas" => {
+                let nas: NasConfig = serde_json::from_str(&config_json).map_err(|e| e.to_string())?;
+                cfg.nas = nas;
+            }
+            _ => return Err(format!("unknown provider: {provider}")),
+        }
+        config::save(&cfg).map_err(|e| e.to_string())?;
+    } // write guard dropped here before rebuild reads config
 
-    match provider.to_lowercase().as_str() {
-        "s3" => {
-            let s3: S3Config = serde_json::from_str(&config_json).map_err(|e| e.to_string())?;
-            cfg.s3 = s3;
-        }
-        "gcs" => {
-            let gcs: GcsConfig = serde_json::from_str(&config_json).map_err(|e| e.to_string())?;
-            cfg.gcs = gcs;
-        }
-        "nas" => {
-            let nas: NasConfig = serde_json::from_str(&config_json).map_err(|e| e.to_string())?;
-            cfg.nas = nas;
-        }
-        _ => return Err(format!("unknown provider: {provider}")),
-    }
-
-    config::save(&cfg).map_err(|e| e.to_string())
+    daemon.rebuild_providers().await.map_err(|e| e.to_string())
 }
 
 /// Return the full app configuration (no secrets — credentials are file paths only).

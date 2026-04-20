@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{atomic::{AtomicBool, Ordering}, Arc};
 use std::time::Duration;
 use tauri::AppHandle;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
 use tauri_plugin_autostart::ManagerExt;
 
@@ -36,6 +36,31 @@ pub struct DaemonState {
     pub paused: Arc<AtomicBool>,
     /// Atomic flag to prevent concurrent manual/scheduled scans.
     pub is_scanning: Arc<AtomicBool>,
+    /// Watch channel sender — push a new provider list whenever config changes.
+    pub provider_tx: watch::Sender<Vec<DynProvider>>,
+}
+
+/// Build the active provider list from the current config.
+/// Called at startup and whenever provider config changes.
+pub async fn build_providers(config: &SharedConfig) -> Vec<DynProvider> {
+    let cfg = config.read().await;
+    let mut p: Vec<DynProvider> = Vec::new();
+    if cfg.nas.enabled && !cfg.nas.mount_path.is_empty() {
+        p.push(Arc::new(NasProvider::new(&cfg.nas.mount_path)));
+    }
+    if cfg.s3.enabled && !cfg.s3.bucket.is_empty() {
+        match S3Provider::new(&cfg.s3.region, &cfg.s3.bucket, &cfg.s3.profile).await {
+            Ok(provider) => p.push(Arc::new(provider)),
+            Err(e) => tracing::error!(error = %e, "S3 provider init failed"),
+        }
+    }
+    if cfg.gcs.enabled && !cfg.gcs.bucket.is_empty() {
+        match GcsProvider::new(&cfg.gcs.bucket, &cfg.gcs.credentials_path).await {
+            Ok(provider) => p.push(Arc::new(provider)),
+            Err(e) => tracing::error!(error = %e, "GCS provider init failed"),
+        }
+    }
+    p
 }
 
 pub async fn apply_autostart_setting(
@@ -79,27 +104,8 @@ pub async fn start(config: SharedConfig, app_handle: AppHandle) -> Result<Daemon
         tracing::warn!(error = %e, "Failed to ensure autostart setting");
     }
 
-    // Build provider list from config
-    let providers: Vec<DynProvider> = {
-        let cfg = config.read().await;
-        let mut p: Vec<DynProvider> = Vec::new();
-        if cfg.nas.enabled && !cfg.nas.mount_path.is_empty() {
-            p.push(Arc::new(NasProvider::new(&cfg.nas.mount_path)));
-        }
-        if cfg.s3.enabled && !cfg.s3.bucket.is_empty() {
-            match S3Provider::new(&cfg.s3.region, &cfg.s3.bucket, &cfg.s3.profile).await {
-                Ok(provider) => p.push(Arc::new(provider)),
-                Err(e) => tracing::error!(error = %e, "S3 provider init failed"),
-            }
-        }
-        if cfg.gcs.enabled && !cfg.gcs.bucket.is_empty() {
-            match GcsProvider::new(&cfg.gcs.bucket, &cfg.gcs.credentials_path).await {
-                Ok(provider) => p.push(Arc::new(provider)),
-                Err(e) => tracing::error!(error = %e, "GCS provider init failed"),
-            }
-        }
-        p
-    };
+    let initial_providers = build_providers(&config).await;
+    let (provider_tx, provider_rx) = watch::channel(initial_providers);
 
     let mut task_handles = Vec::new();
 
@@ -109,10 +115,9 @@ pub async fn start(config: SharedConfig, app_handle: AppHandle) -> Result<Daemon
         let config = config.clone();
         let app_handle = app_handle.clone();
         let stats = stats.clone();
-        let providers_for_queue = providers.clone();
         tokio::spawn(queue::start(
             upload_rx,
-            providers_for_queue,
+            provider_rx.clone(),
             db,
             config,
             app_handle,
@@ -130,7 +135,7 @@ pub async fn start(config: SharedConfig, app_handle: AppHandle) -> Result<Daemon
         tokio::spawn(renamer::start(
             rename_rx,
             upload_tx_clone,
-            providers,
+            provider_rx,
             db,
             config,
             app_handle,
@@ -227,6 +232,7 @@ pub async fn start(config: SharedConfig, app_handle: AppHandle) -> Result<Daemon
         stats,
         paused,
         is_scanning,
+        provider_tx,
     })
 }
 
@@ -248,6 +254,15 @@ pub async fn shutdown(mut state: DaemonState) -> Result<()> {
 }
 
 impl DaemonState {
+    /// Rebuild the provider list from the current config and broadcast it to
+    /// queue and renamer workers. Call this after any provider config change.
+    pub async fn rebuild_providers(&self) -> anyhow::Result<()> {
+        let providers = build_providers(&self.config).await;
+        tracing::info!(count = providers.len(), "Provider list rebuilt");
+        let _ = self.provider_tx.send(providers);
+        Ok(())
+    }
+
     /// Spawn a background scan for the given folder path.
     /// Files with no sled entry are enqueued for upload.
     pub fn spawn_scan(&self, folder_path: PathBuf) {

@@ -8,6 +8,11 @@ function fileEventToActivityEntry(
   status: ActivityStatus
 ): ActivityEntry {
   const filename = event.path.split('/').pop() || event.path.split('\\').pop() || event.path;
+  const providers: Record<string, { status: ActivityStatus; error?: string | null }> = {};
+  
+  if (event.provider) {
+    providers[event.provider] = { status, error: event.error };
+  }
 
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -15,20 +20,23 @@ function fileEventToActivityEntry(
     status,
     path: event.path,
     filename,
-    provider: event.provider,
+    providers,
     error: event.error,
   };
 }
 
 function renamedEventToActivityEntry(event: FileRenamedEvent): ActivityEntry {
   const filename = event.new_path.split('/').pop() || event.new_path.split('\\').pop() || event.new_path;
+  const providers: Record<string, { status: ActivityStatus; error?: string | null }> = {};
+  providers[event.provider] = { status: 'renamed', error: null };
+
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
     timestamp: Date.now(),
     status: 'renamed',
     path: event.new_path,
     filename,
-    provider: event.provider,
+    providers,
     error: null,
     old_path: event.old_path,
     new_path: event.new_path,
@@ -37,13 +45,16 @@ function renamedEventToActivityEntry(event: FileRenamedEvent): ActivityEntry {
 
 function renameErrorEventToActivityEntry(event: FileRenameErrorEvent): ActivityEntry {
   const filename = event.new_path.split('/').pop() || event.new_path.split('\\').pop() || event.new_path;
+  const providers: Record<string, { status: ActivityStatus; error?: string | null }> = {};
+  providers[event.provider] = { status: 'rename_error', error: event.error };
+
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
     timestamp: Date.now(),
     status: 'rename_error',
     path: event.new_path,
     filename,
-    provider: event.provider,
+    providers,
     error: event.error,
     old_path: event.old_path,
     new_path: event.new_path,
