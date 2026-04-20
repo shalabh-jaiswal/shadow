@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
@@ -46,6 +46,13 @@ pub struct ScanCompletePayload {
     pub trigger: String,
 }
 
+#[derive(Default)]
+struct ScanStats {
+    scanned: u64,
+    queued: u64,
+    total_bytes: u64,
+}
+
 /// Start a full scan across all watched folders
 pub async fn scan_all_folders(
     config: &SharedConfig,
@@ -58,6 +65,9 @@ pub async fn scan_all_folders(
         let cfg = config.read().await;
         cfg.watched_folders.paths.clone()
     };
+
+    let mut aggregate_stats = ScanStats::default();
+    let trigger_str = trigger.as_str().to_string();
 
     for folder in &watched_folders {
         let folder_path = PathBuf::from(folder);
@@ -74,21 +84,39 @@ pub async fn scan_all_folders(
                 continue;
             }
 
-            // run_scan blocks asynchronously on folder completion so we can await it
-            // or we could spawn it. Since this is scan_all_folders we await each sequentially
-            // to not overwhelm the system
-            if let Err(e) = run_scan(
-                folder_path,
+            match run_scan(
+                folder_path.clone(),
                 config.clone(),
                 db.clone(),
                 tx.clone(),
                 app_handle.clone(),
                 trigger,
             ).await {
-                tracing::error!(folder = %folder, error = %e, "folder scan failed");
+                Ok(stats) => {
+                    aggregate_stats.scanned += stats.scanned;
+                    aggregate_stats.queued += stats.queued;
+                    aggregate_stats.total_bytes += stats.total_bytes;
+                }
+                Err(e) => {
+                    tracing::error!(folder = %folder, error = %e, "folder scan failed");
+                }
             }
         }
     }
+
+    let files_skipped = aggregate_stats.scanned.saturating_sub(aggregate_stats.queued);
+
+    let _ = app_handle.emit(
+        "scan_complete",
+        ScanCompletePayload {
+            folder: "All Folders".to_string(),
+            total_files: aggregate_stats.scanned,
+            total_bytes: aggregate_stats.total_bytes,
+            files_uploaded: aggregate_stats.queued,
+            files_skipped,
+            trigger: trigger_str,
+        },
+    );
 }
 
 /// Spawn a background scan of `folder_path`.
@@ -103,8 +131,26 @@ pub fn spawn_scan(
     trigger: ScanTrigger,
 ) {
     tokio::spawn(async move {
-        if let Err(e) = run_scan(folder_path, cfg, db, tx, app, trigger).await {
-            tracing::error!(error = %e, "folder scan failed");
+        let folder_str = folder_path.to_string_lossy().to_string();
+        let trigger_str = trigger.as_str().to_string();
+        match run_scan(folder_path, cfg, db, tx, app.clone(), trigger).await {
+            Ok(stats) => {
+                let files_skipped = stats.scanned.saturating_sub(stats.queued);
+                let _ = app.emit(
+                    "scan_complete",
+                    ScanCompletePayload {
+                        folder: folder_str,
+                        total_files: stats.scanned,
+                        total_bytes: stats.total_bytes,
+                        files_uploaded: stats.queued,
+                        files_skipped,
+                        trigger: trigger_str,
+                    },
+                );
+            }
+            Err(e) => {
+                tracing::error!(error = %e, "folder scan failed");
+            }
         }
     });
 }
@@ -116,7 +162,7 @@ async fn run_scan(
     tx: mpsc::Sender<PathBuf>,
     app: AppHandle,
     trigger: ScanTrigger,
-) -> Result<()> {
+) -> Result<ScanStats> {
     let folder_str = folder_path.to_string_lossy().to_string();
     let follow_symlinks = cfg.read().await.daemon.follow_symlinks;
     let trigger_str = trigger.as_str().to_string();
@@ -157,7 +203,18 @@ async fn run_scan(
     for path in &files {
         scanned += 1;
 
-        // Check sled — if entry exists and hash matches, skip (resumable)
+        if let Ok(meta) = tokio::fs::metadata(path).await {
+            // Skip 0-byte files to match live watcher/queue behavior
+            if meta.len() == 0 {
+                continue;
+            }
+            total_bytes += meta.len();
+        } else {
+            continue;
+        }
+
+        // Check sled — if entry exists, skip (resumable).
+        // A full hash check here would destroy disk I/O on 500GB folders.
         let needs_upload = tokio::task::spawn_blocking({
             let path = path.clone();
             let db = db.clone();
@@ -166,9 +223,6 @@ async fn run_scan(
         .await??;
 
         if needs_upload {
-            if let Ok(meta) = tokio::fs::metadata(path).await {
-                total_bytes += meta.len();
-            }
             // Don't block if queue is full — skip and let live watcher catch it later
             let _ = tx.try_send(path.clone());
             queued += 1;
@@ -190,9 +244,7 @@ async fn run_scan(
         }
     }
 
-    let files_skipped = total.saturating_sub(queued);
-
-    // Final progress + complete
+    // Final progress
     let _ = app.emit(
         "scan_progress",
         ScanProgressPayload {
@@ -203,26 +255,19 @@ async fn run_scan(
             trigger: trigger_str.clone(),
         },
     );
-    let _ = app.emit(
-        "scan_complete",
-        ScanCompletePayload {
-            folder: folder_str,
-            total_files: scanned,
-            total_bytes,
-            files_uploaded: queued,
-            files_skipped,
-            trigger: trigger_str.clone(),
-        },
-    );
 
-    Ok(())
+    Ok(ScanStats {
+        scanned,
+        queued,
+        total_bytes,
+    })
 }
 
 /// Returns true if the file needs to be uploaded (no stored hash entry).
 /// This is a synchronous function meant to run in spawn_blocking.
 /// The live watcher + hasher handles the "changed since last backup" case.
 /// The scanner's job is just to find files that have NEVER been uploaded (no sled entry).
-fn check_needs_upload(path: &Path, db: &Db) -> Result<bool> {
+fn check_needs_upload(path: &std::path::Path, db: &Db) -> Result<bool> {
     let key = path.to_string_lossy();
     Ok(db.get(key.as_bytes())?.is_none())
 }
