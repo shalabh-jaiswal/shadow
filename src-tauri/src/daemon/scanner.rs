@@ -80,7 +80,17 @@ pub async fn scan_all_folders(
                 .and_then(|v| std::str::from_utf8(&v).ok().map(|s| s.to_string()))
                 .unwrap_or_else(|| "full".to_string());
 
-            if mode == "forward_only" {
+            let added_at = {
+                let key = format!("folder_added_at:{folder}");
+                db.get(key.as_bytes())
+                    .ok()
+                    .flatten()
+                    .and_then(|v| v.as_ref().try_into().ok().map(u64::from_le_bytes))
+            };
+
+            // In forward_only mode, we only scan if we have an added_at timestamp
+            // to compare against. If no timestamp exists (legacy folder), we skip it.
+            if mode == "forward_only" && added_at.is_none() {
                 continue;
             }
 
@@ -91,6 +101,7 @@ pub async fn scan_all_folders(
                 tx.clone(),
                 app_handle.clone(),
                 trigger,
+                added_at,
             ).await {
                 Ok(stats) => {
                     aggregate_stats.scanned += stats.scanned;
@@ -133,7 +144,16 @@ pub fn spawn_scan(
     tokio::spawn(async move {
         let folder_str = folder_path.to_string_lossy().to_string();
         let trigger_str = trigger.as_str().to_string();
-        match run_scan(folder_path, cfg, db, tx, app.clone(), trigger).await {
+        
+        let added_at = {
+            let key = format!("folder_added_at:{}", folder_str);
+            db.get(key.as_bytes())
+                .ok()
+                .flatten()
+                .and_then(|v| v.as_ref().try_into().ok().map(u64::from_le_bytes))
+        };
+
+        match run_scan(folder_path, cfg, db, tx, app.clone(), trigger, added_at).await {
             Ok(stats) => {
                 let files_skipped = stats.scanned.saturating_sub(stats.queued);
                 let _ = app.emit(
@@ -162,6 +182,7 @@ async fn run_scan(
     tx: mpsc::Sender<PathBuf>,
     app: AppHandle,
     trigger: ScanTrigger,
+    added_at: Option<u64>,
 ) -> Result<ScanStats> {
     let folder_str = folder_path.to_string_lossy().to_string();
     let follow_symlinks = cfg.read().await.daemon.follow_symlinks;
@@ -171,6 +192,17 @@ async fn run_scan(
     let mut queued: u64 = 0;
     let mut total_bytes: u64 = 0;
     let mut last_emit = Instant::now();
+
+    // In forward_only mode, we can optimize by skipping files that haven't been modified
+    // since the folder was added.
+    let folder_mode = {
+        let key = format!("folder_mode:{}", folder_str);
+        db.get(key.as_bytes())
+            .ok()
+            .flatten()
+            .and_then(|v| std::str::from_utf8(&v).ok().map(|s| s.to_string()))
+            .unwrap_or_else(|| "full".to_string())
+    };
 
     // Collect files via walkdir (blocking) — run in spawn_blocking
     let folder_clone = folder_path.clone();
@@ -208,6 +240,20 @@ async fn run_scan(
             if meta.len() == 0 {
                 continue;
             }
+
+            // In forward_only mode, skip files modified before the folder was added
+            if folder_mode == "forward_only" {
+                if let (Some(added_ts), Ok(modified)) = (added_at, meta.modified()) {
+                    let modified_ts = modified
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis() as u64;
+                    if modified_ts < added_ts {
+                        continue;
+                    }
+                }
+            }
+
             total_bytes += meta.len();
         } else {
             continue;

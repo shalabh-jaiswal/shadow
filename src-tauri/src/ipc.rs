@@ -83,6 +83,17 @@ pub async fn add_folder(
         .insert(mode_key.as_bytes(), mode_value.as_bytes())
         .map_err(|e| e.to_string())?;
 
+    // Store added_at timestamp
+    let added_at_key = format!("folder_added_at:{}", path);
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+    daemon
+        .db
+        .insert(added_at_key.as_bytes(), &ts.to_le_bytes())
+        .map_err(|e| e.to_string())?;
+
     // Register with watcher
     if let Some(ref mut w) = daemon.watcher {
         let p = Path::new(&path);
@@ -119,6 +130,10 @@ pub async fn remove_folder(
     // Remove folder mode from sled
     let mode_key = format!("folder_mode:{}", path);
     let _ = daemon.db.remove(mode_key.as_bytes());
+
+    // Remove added_at timestamp
+    let added_at_key = format!("folder_added_at:{}", path);
+    let _ = daemon.db.remove(added_at_key.as_bytes());
 
     // Unregister from watcher
     if let Some(ref mut w) = daemon.watcher {
