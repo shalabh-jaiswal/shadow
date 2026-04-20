@@ -82,11 +82,85 @@ pub async fn ensure_autostart(
 ) -> anyhow::Result<()> {
     let autostart = app.autolaunch();
     let cfg = config.read().await;
-    
+
     if cfg.daemon.start_on_login && !autostart.is_enabled()? {
         tracing::info!("First launch — registering autostart");
         autostart.enable()?;
     }
+    drop(cfg);
+
+    // Belt-and-suspenders: write the platform startup file directly so
+    // autostart works even when tauri-plugin-autostart fails (mirrors the
+    // Windows startup-folder script in the installer). Overwrites on every
+    // launch so the path stays correct after app moves/updates.
+    write_startup_entry().await;
+    Ok(())
+}
+
+async fn write_startup_entry() {
+    #[cfg(target_os = "macos")]
+    {
+        if let Err(e) = write_launchagent_plist() {
+            tracing::warn!(error = %e, "Failed to write LaunchAgent plist");
+        }
+    }
+    #[cfg(target_os = "linux")]
+    {
+        if let Err(e) = write_xdg_autostart() {
+            tracing::warn!(error = %e, "Failed to write XDG autostart entry");
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn write_launchagent_plist() -> anyhow::Result<()> {
+    let exe = std::env::current_exe()?;
+    let exe_str = exe.to_string_lossy();
+
+    let plist = format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.shadow.app</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>{exe_str}</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <false/>
+</dict>
+</plist>
+"#
+    );
+
+    let launch_agents = dirs::home_dir()
+        .ok_or_else(|| anyhow::anyhow!("cannot find home dir"))?
+        .join("Library/LaunchAgents");
+    std::fs::create_dir_all(&launch_agents)?;
+    std::fs::write(launch_agents.join("com.shadow.app.plist"), plist)?;
+    tracing::info!("LaunchAgent plist written");
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn write_xdg_autostart() -> anyhow::Result<()> {
+    let exe = std::env::current_exe()?;
+    let exe_str = exe.to_string_lossy();
+
+    let desktop = format!(
+        "[Desktop Entry]\nType=Application\nName=Shadow\nExec={exe_str}\nX-GNOME-Autostart-enabled=true\n"
+    );
+
+    let autostart_dir = dirs::home_dir()
+        .ok_or_else(|| anyhow::anyhow!("cannot find home dir"))?
+        .join(".config/autostart");
+    std::fs::create_dir_all(&autostart_dir)?;
+    std::fs::write(autostart_dir.join("shadow.desktop"), desktop)?;
+    tracing::info!("XDG autostart entry written");
     Ok(())
 }
 
