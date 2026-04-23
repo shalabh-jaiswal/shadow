@@ -106,6 +106,7 @@ v0.8.0 (2026-03-31): Update app icons (blue variant).
 v0.9.0 (2026-04-10): Ignore temp/junk files (vim swap, Office locks, .tmp, trailing tilde, OS metadata) and skip 0-byte placeholder files.
 v0.10.0 (2026-04-20): Parallel provider uploads with per-provider live status, dynamic provider reload on config change, platform startup entry (LaunchAgent/XDG) written on launch.
 v0.11.0 (2026-04-23): Per-provider hash tracking in sled so enabling a new provider re-uploads existing files to it; mtime fast-path in scanner; system sync status card on Dashboard.
+v0.12.0 (2026-04-23): Unify recovery scan UX into status card, scan completion/duration logging, decouple scan schedule from component lifecycle via global store.
 
 ---
 
