@@ -58,17 +58,6 @@ export function Dashboard() {
             Monitor backup activity and performance
           </p>
         </div>
-        <button
-          onClick={handleBackupNow}
-          disabled={isScanning}
-          className={`px-4 py-2 rounded-md text-white text-sm font-medium transition-colors ${
-            isScanning
-              ? 'bg-blue-400 cursor-not-allowed'
-              : 'bg-blue-600 hover:bg-blue-700'
-          }`}
-        >
-          {isScanning ? 'Scanning...' : 'Backup Now'}
-        </button>
       </div>
 
       {/* Progress & Summary Banners */}
@@ -139,7 +128,7 @@ export function Dashboard() {
       </div>
 
       {/* System Sync Status */}
-      <RecoveryStatus />
+      <RecoveryStatus isScanning={isScanning} onBackupNow={handleBackupNow} />
 
       {/* Activity Feed */}
       <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
