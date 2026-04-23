@@ -206,7 +206,7 @@ pub async fn start(config: SharedConfig, app_handle: AppHandle) -> Result<Daemon
         tokio::spawn(renamer::start(
             rename_rx,
             upload_tx_clone,
-            provider_rx,
+            provider_rx.clone(),
             db,
             config,
             app_handle,
@@ -241,6 +241,7 @@ pub async fn start(config: SharedConfig, app_handle: AppHandle) -> Result<Daemon
         let app_handle_clone = app_handle.clone();
         let paused_clone = paused.clone();
         let is_scanning_clone = is_scanning.clone();
+        let provider_rx_clone = provider_rx.clone();
 
         let scheduled_scan_handle = tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(interval_secs));
@@ -264,12 +265,14 @@ pub async fn start(config: SharedConfig, app_handle: AppHandle) -> Result<Daemon
                 );
 
                 is_scanning_clone.store(true, Ordering::SeqCst);
+                let provider_names: Vec<String> = provider_rx_clone.borrow().iter().map(|p| p.name().to_string()).collect();
                 scanner::scan_all_folders(
                     &config_clone,
                     &db_clone,
                     &tx_clone,
                     &app_handle_clone,
                     scanner::ScanTrigger::Scheduled,
+                    provider_names,
                 )
                 .await;
                 is_scanning_clone.store(false, Ordering::SeqCst);
@@ -338,6 +341,7 @@ impl DaemonState {
     /// Spawn a background scan for the given folder path.
     /// Files with no sled entry are enqueued for upload.
     pub fn spawn_scan(&self, folder_path: PathBuf) {
+        let provider_names: Vec<String> = self.provider_tx.subscribe().borrow().iter().map(|p| p.name().to_string()).collect();
         scanner::spawn_scan(
             folder_path,
             self.config.clone(),
@@ -345,6 +349,7 @@ impl DaemonState {
             self.upload_tx.clone(),
             self.app_handle.clone(),
             scanner::ScanTrigger::Initial,
+            provider_names,
         );
     }
 
@@ -361,10 +366,12 @@ impl DaemonState {
         let tx = self.upload_tx.clone();
         let app_handle = self.app_handle.clone();
         let is_scanning = self.is_scanning.clone();
+        let provider_rx = self.provider_tx.subscribe();
 
         tokio::spawn(async move {
             is_scanning.store(true, Ordering::SeqCst);
-            scanner::scan_all_folders(&config, &db, &tx, &app_handle, scanner::ScanTrigger::Manual)
+            let provider_names: Vec<String> = provider_rx.borrow().iter().map(|p| p.name().to_string()).collect();
+            scanner::scan_all_folders(&config, &db, &tx, &app_handle, scanner::ScanTrigger::Manual, provider_names)
                 .await;
             is_scanning.store(false, Ordering::SeqCst);
         });

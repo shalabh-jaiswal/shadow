@@ -1,5 +1,5 @@
 use crate::config::SharedConfig;
-use crate::daemon::hasher::{self, HashCheckResult};
+use crate::daemon::hasher;
 use crate::daemon::stats::DaemonStats;
 use crate::ipc::{emit_file_event, FileEvent};
 use crate::path_utils::remote_key;
@@ -58,20 +58,37 @@ pub async fn start(
             _ => {}
         }
 
-        match hasher::check_and_hash(&db, &path).await {
-            Ok(HashCheckResult::Unchanged(_)) => {
-                emit_file_event(
-                    &app_handle,
-                    "file_skipped",
-                    FileEvent {
-                        path: path.to_string_lossy().to_string(),
-                        provider: None,
-                        error: None,
-                    },
-                );
-                continue;
-            }
-            Ok(HashCheckResult::Changed(hash)) => {
+        let provider_names: Vec<String> = provider_rx.borrow().iter().map(|p| p.name().to_string()).collect();
+
+        match hasher::check_and_hash(&db, &path, &provider_names).await {
+            Ok((hash, missing_providers)) => {
+                if missing_providers.is_empty() {
+                    emit_file_event(
+                        &app_handle,
+                        "file_skipped",
+                        FileEvent {
+                            path: path.to_string_lossy().to_string(),
+                            provider: None,
+                            error: None,
+                        },
+                    );
+                    
+                    // Even if unchanged, we should update the mtime for all providers
+                    // so the scanner's fast-path works correctly if only mtime was touched.
+                    let mtime_millis = tokio::fs::metadata(&path)
+                        .await
+                        .ok()
+                        .and_then(|m| m.modified().ok())
+                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                        .map(|d| d.as_millis() as u64)
+                        .unwrap_or(0);
+                        
+                    for provider in &provider_names {
+                        let _ = hasher::record_hash(&db, &path, provider, hash, mtime_millis);
+                    }
+                    continue;
+                }
+
                 emit_file_event(
                     &app_handle,
                     "file_queued",
@@ -89,8 +106,14 @@ pub async fn start(
                 let host = host.clone();
                 let stats = stats.clone();
                 let config = Arc::clone(&config);
-                // Snapshot the current provider list at dispatch time.
-                let providers: Vec<DynProvider> = provider_rx.borrow().clone();
+                
+                // Snapshot the current providers, filtered by what actually needs uploading
+                let providers: Vec<DynProvider> = provider_rx
+                    .borrow()
+                    .iter()
+                    .filter(|p| missing_providers.contains(&p.name().to_string()))
+                    .cloned()
+                    .collect();
 
                 tokio::spawn(async move {
                     let _permit = permit.acquire().await.unwrap();
@@ -139,7 +162,7 @@ pub async fn start(
                                         "provider_status",
                                         serde_json::json!({ "provider": name, "status": "ok" }),
                                     );
-                                    true
+                                    (name, true)
                                 }
                                 Err(e) => {
                                     emit_file_event(
@@ -159,13 +182,13 @@ pub async fn start(
                                             "error": e.to_string()
                                         }),
                                     );
-                                    false
+                                    (name, false)
                                 }
                             }
                         }
                     });
                     let results = futures::future::join_all(upload_futures).await;
-                    let any_ok = results.iter().any(|&ok| ok);
+                    let any_ok = results.iter().any(|(_, ok)| *ok);
 
                     stats.upload_finished();
 
@@ -184,9 +207,19 @@ pub async fn start(
                             .map(|d| d.as_millis() as u64)
                             .unwrap_or(0);
 
-                        if let Err(e) = hasher::record_hash(&db, &path, hash, mtime_millis) {
-                            tracing::error!(path = %path.display(), error = %e, "failed to record hash after upload");
+                        for (provider_name, succeeded) in &results {
+                            if *succeeded {
+                                if let Err(e) = hasher::record_hash(&db, &path, provider_name, hash, mtime_millis) {
+                                    tracing::error!(
+                                        path = %path.display(),
+                                        provider = %provider_name,
+                                        error = %e,
+                                        "failed to record hash after upload"
+                                    );
+                                }
+                            }
                         }
+                        
                         // Record last-backup timestamp for the parent watched folder,
                         // then emit folder_updated so the frontend re-fetches AFTER
                         // the sled write is complete (avoids the file_uploaded race).

@@ -30,7 +30,8 @@ pub async fn start(
     };
 
     while let Some((old_path, new_path)) = rx.recv().await {
-        let old_in_sled = hasher::has_entry(&db, &old_path).unwrap_or(false);
+        let provider_names: Vec<String> = provider_rx.borrow().iter().map(|p| p.name().to_string()).collect();
+        let old_in_sled = hasher::has_any_entry(&db, &old_path, &provider_names).unwrap_or(false);
 
         if !old_in_sled {
             // Never backed up — treat as a new file upload
@@ -89,7 +90,7 @@ pub async fn start(
             let all_ok = results.iter().all(|&ok| ok);
 
             if all_ok {
-                if let Err(e) = hasher::rename_hash_entry(&db, &old_path, &new_path) {
+                if let Err(e) = hasher::rename_hash_entry(&db, &old_path, &new_path, &provider_names) {
                     tracing::error!(
                         old_path = %old_path.display(),
                         new_path = %new_path.display(),

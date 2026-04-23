@@ -60,6 +60,7 @@ pub async fn scan_all_folders(
     tx: &mpsc::Sender<PathBuf>,
     app_handle: &AppHandle,
     trigger: ScanTrigger,
+    provider_names: Vec<String>,
 ) {
     let watched_folders = {
         let cfg = config.read().await;
@@ -102,6 +103,7 @@ pub async fn scan_all_folders(
                 app_handle.clone(),
                 trigger,
                 added_at,
+                provider_names.clone(),
             )
             .await
             {
@@ -144,6 +146,7 @@ pub fn spawn_scan(
     tx: mpsc::Sender<PathBuf>,
     app: AppHandle,
     trigger: ScanTrigger,
+    provider_names: Vec<String>,
 ) {
     tokio::spawn(async move {
         let folder_str = folder_path.to_string_lossy().to_string();
@@ -157,7 +160,7 @@ pub fn spawn_scan(
                 .and_then(|v| v.as_ref().try_into().ok().map(u64::from_le_bytes))
         };
 
-        match run_scan(folder_path, cfg, db, tx, app.clone(), trigger, added_at).await {
+        match run_scan(folder_path, cfg, db, tx, app.clone(), trigger, added_at, provider_names).await {
             Ok(stats) => {
                 let files_skipped = stats.scanned.saturating_sub(stats.queued);
                 let _ = app.emit(
@@ -179,6 +182,7 @@ pub fn spawn_scan(
     });
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_scan(
     folder_path: PathBuf,
     cfg: SharedConfig,
@@ -187,6 +191,7 @@ async fn run_scan(
     app: AppHandle,
     trigger: ScanTrigger,
     added_at: Option<u64>,
+    provider_names: Vec<String>,
 ) -> Result<ScanStats> {
     let folder_str = folder_path.to_string_lossy().to_string();
     let follow_symlinks = cfg.read().await.daemon.follow_symlinks;
@@ -239,7 +244,7 @@ async fn run_scan(
     for path in &files {
         scanned += 1;
 
-        let needs_upload;
+        let mut needs_upload = true;
         let current_mtime;
 
         if let Ok(meta) = tokio::fs::metadata(path).await {
@@ -268,47 +273,21 @@ async fn run_scan(
             continue;
         }
 
-        // Fast-path mtime check
+        // Fast-path mtime check across all providers
         let mtime_check_result = tokio::task::spawn_blocking({
             let path = path.clone();
             let db = db.clone();
-            move || crate::daemon::hasher::get_stored_mtime_and_hash(&db, &path)
+            let provider_names = provider_names.clone();
+            move || {
+                let refs: Vec<&str> = provider_names.iter().map(|s| s.as_str()).collect();
+                crate::daemon::hasher::needs_upload_for_providers(&db, &path, &refs, current_mtime)
+            }
         })
         .await??;
 
-        match mtime_check_result {
-            None => {
-                // File was never backed up -> upload
-                needs_upload = true;
-            }
-            Some((stored_mtime, _hash)) if stored_mtime == current_mtime && stored_mtime != 0 => {
-                // File is backed up and mtime perfectly matches -> skip
-                needs_upload = false;
-            }
-            Some((_stored_mtime, stored_hash)) => {
-                // Mtime differs (or is 0) -> we must hash to verify content changes
-                let hash_result = match crate::daemon::hasher::check_and_hash(&db, path).await {
-                    Ok(res) => res,
-                    Err(e) => {
-                        tracing::warn!(error = %e, path = %path.display(), "failed to hash file during scan");
-                        continue;
-                    }
-                };
-
-                match hash_result {
-                    crate::daemon::hasher::HashCheckResult::Changed(_) => {
-                        needs_upload = true;
-                    }
-                    crate::daemon::hasher::HashCheckResult::Unchanged(_) => {
-                        // Content hasn't changed, but mtime did.
-                        // Update the stored mtime in sled so future scans are fast again.
-                        // We safely reconstruct the blake3::Hash from the stored bytes.
-                        let hash_obj = blake3::Hash::from_bytes(stored_hash);
-                        let _ = crate::daemon::hasher::record_hash(&db, path, hash_obj, current_mtime);
-                        needs_upload = false;
-                    }
-                }
-            }
+        if !mtime_check_result {
+            // All providers have an entry and mtimes match perfectly
+            needs_upload = false;
         }
 
         if needs_upload {

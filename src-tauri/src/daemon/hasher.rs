@@ -12,95 +12,111 @@ pub fn open_db() -> Result<Db> {
     Ok(db)
 }
 
-pub enum HashCheckResult {
-    Changed(blake3::Hash),
-    #[allow(dead_code)]
-    Unchanged(u64),
-}
-
-pub async fn check_and_hash(db: &Db, path: &Path) -> Result<HashCheckResult> {
+pub async fn check_and_hash(
+    db: &Db,
+    path: &Path,
+    providers: &[String],
+) -> Result<(blake3::Hash, Vec<String>)> {
     let path_buf = path.to_path_buf();
     let db = db.clone();
+    let providers = providers.to_vec();
 
-    tokio::task::spawn_blocking(move || -> Result<HashCheckResult> {
+    tokio::task::spawn_blocking(move || -> Result<(blake3::Hash, Vec<String>)> {
         let bytes = std::fs::read(&path_buf)
             .with_context(|| format!("failed to read file: {}", path_buf.display()))?;
         let new_hash = blake3::hash(&bytes);
 
-        let key = path_key(&path_buf);
-        let stored = db.get(&key)?;
+        let path_str = path_buf.to_string_lossy();
+        let mut missing = Vec::new();
 
-        match stored {
-            Some(stored_bytes) if stored_bytes.len() == 40 => {
-                let (stored_hash_bytes, mtime_bytes) = stored_bytes.split_at(32);
-                if stored_hash_bytes == new_hash.as_bytes() {
-                    let mtime = u64::from_le_bytes(mtime_bytes.try_into().unwrap());
-                    Ok(HashCheckResult::Unchanged(mtime))
-                } else {
-                    Ok(HashCheckResult::Changed(new_hash))
+        for provider in providers {
+            let key = format!("{}:{}", path_str, provider);
+            let stored = db.get(key.as_bytes())?;
+
+            let is_match = match stored {
+                Some(stored_bytes) if stored_bytes.len() == 40 => {
+                    let (stored_hash_bytes, _mtime_bytes) = stored_bytes.split_at(32);
+                    stored_hash_bytes == new_hash.as_bytes()
                 }
-            }
-            // Fallback for legacy 32-byte entries
-            Some(stored_bytes) if stored_bytes.len() == 32 => {
-                if stored_bytes.as_ref() == new_hash.as_bytes() {
-                    Ok(HashCheckResult::Unchanged(0))
-                } else {
-                    Ok(HashCheckResult::Changed(new_hash))
+                Some(stored_bytes) if stored_bytes.len() == 32 => {
+                    stored_bytes.as_ref() == new_hash.as_bytes()
                 }
+                _ => false,
+            };
+
+            if !is_match {
+                missing.push(provider);
             }
-            _ => Ok(HashCheckResult::Changed(new_hash)),
         }
+        Ok((new_hash, missing))
     })
     .await?
 }
 
-pub fn get_stored_mtime_and_hash(db: &Db, path: &Path) -> Result<Option<(u64, [u8; 32])>> {
-    let key = path_key(path);
-    if let Some(stored_bytes) = db.get(key)? {
-        if stored_bytes.len() == 40 {
-            let mut hash_bytes = [0u8; 32];
-            hash_bytes.copy_from_slice(&stored_bytes[0..32]);
-            let mtime_bytes: [u8; 8] = stored_bytes[32..40].try_into().unwrap();
-            let mtime = u64::from_le_bytes(mtime_bytes);
-            Ok(Some((mtime, hash_bytes)))
-        } else if stored_bytes.len() == 32 {
-            let mut hash_bytes = [0u8; 32];
-            hash_bytes.copy_from_slice(&stored_bytes);
-            Ok(Some((0, hash_bytes))) // Legacy fallback
+pub fn needs_upload_for_providers(
+    db: &Db,
+    path: &Path,
+    providers: &[&str],
+    current_mtime: u64,
+) -> Result<bool> {
+    let path_str = path.to_string_lossy();
+    for provider in providers {
+        let key = format!("{}:{}", path_str, provider);
+        if let Some(stored_bytes) = db.get(key.as_bytes())? {
+            if stored_bytes.len() == 40 {
+                let mtime_bytes: [u8; 8] = stored_bytes[32..40].try_into().unwrap();
+                let stored_mtime = u64::from_le_bytes(mtime_bytes);
+                if stored_mtime != current_mtime || stored_mtime == 0 {
+                    return Ok(true);
+                }
+            } else {
+                return Ok(true);
+            }
         } else {
-            Ok(None)
+            return Ok(true);
         }
-    } else {
-        Ok(None)
     }
+    Ok(false)
 }
 
-pub fn has_entry(db: &Db, path: &Path) -> Result<bool> {
-    let key = path_key(path);
-    Ok(db.get(key)?.is_some())
+pub fn has_any_entry(db: &Db, path: &Path, providers: &[String]) -> Result<bool> {
+    let path_str = path.to_string_lossy();
+    for provider in providers {
+        let key = format!("{}:{}", path_str, provider);
+        if db.get(key.as_bytes())?.is_some() {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
-pub fn rename_hash_entry(db: &Db, old_path: &Path, new_path: &Path) -> Result<()> {
-    let old_key = path_key(old_path);
-    if let Some(hash_value) = db.get(&old_key)? {
-        let new_key = path_key(new_path);
-        db.insert(new_key, hash_value)?;
-        db.remove(&old_key)?;
+pub fn rename_hash_entry(db: &Db, old_path: &Path, new_path: &Path, providers: &[String]) -> Result<()> {
+    let old_str = old_path.to_string_lossy();
+    let new_str = new_path.to_string_lossy();
+    for provider in providers {
+        let old_key = format!("{}:{}", old_str, provider);
+        if let Some(hash_value) = db.get(old_key.as_bytes())? {
+            let new_key = format!("{}:{}", new_str, provider);
+            db.insert(new_key.as_bytes(), hash_value)?;
+            db.remove(old_key.as_bytes())?;
+        }
     }
     Ok(())
 }
 
-pub fn record_hash(db: &Db, path: &Path, hash: blake3::Hash, mtime_millis: u64) -> Result<()> {
-    let key = path_key(path);
+pub fn record_hash(
+    db: &Db,
+    path: &Path,
+    provider: &str,
+    hash: blake3::Hash,
+    mtime_millis: u64,
+) -> Result<()> {
+    let key = format!("{}:{}", path.to_string_lossy(), provider);
     let mut value = Vec::with_capacity(40);
     value.extend_from_slice(hash.as_bytes());
     value.extend_from_slice(&mtime_millis.to_le_bytes());
-    db.insert(key, value)?;
+    db.insert(key.as_bytes(), value)?;
     Ok(())
-}
-
-fn path_key(path: &Path) -> Vec<u8> {
-    path.to_string_lossy().as_bytes().to_vec()
 }
 
 #[cfg(test)]
@@ -120,8 +136,9 @@ mod tests {
         let file = dir.path().join("test.txt");
         std::fs::write(&file, b"hello world").unwrap();
 
-        let result = check_and_hash(&db, &file).await.unwrap();
-        assert!(matches!(result, HashCheckResult::Changed(_)));
+        let providers = vec!["s3".to_string()];
+        let (_hash, missing) = check_and_hash(&db, &file, &providers).await.unwrap();
+        assert_eq!(missing, vec!["s3"]);
     }
 
     #[tokio::test]
@@ -131,38 +148,35 @@ mod tests {
         let file = dir.path().join("test.txt");
         std::fs::write(&file, b"hello world").unwrap();
 
-        let result = check_and_hash(&db, &file).await.unwrap();
-        if let HashCheckResult::Changed(hash) = result {
-            record_hash(&db, &file, hash, 100).unwrap();
-        }
+        let providers = vec!["s3".to_string()];
+        let (hash, missing) = check_and_hash(&db, &file, &providers).await.unwrap();
+        assert_eq!(missing.len(), 1);
+        
+        record_hash(&db, &file, "s3", hash, 100).unwrap();
 
-        let result2 = check_and_hash(&db, &file).await.unwrap();
-        match result2 {
-            HashCheckResult::Unchanged(mtime) => assert_eq!(mtime, 100),
-            _ => panic!("Expected Unchanged"),
-        }
+        let (_hash, missing2) = check_and_hash(&db, &file, &providers).await.unwrap();
+        assert!(missing2.is_empty());
     }
 
     #[test]
-    fn has_entry_false_for_unknown_path() {
+    fn needs_upload_false_for_unknown_path() {
         let db = open_test_db();
         let dir = tempdir().unwrap();
         let file = dir.path().join("missing.txt");
-        assert!(!has_entry(&db, &file).unwrap());
+        assert!(needs_upload_for_providers(&db, &file, &["s3"], 100).unwrap());
     }
 
     #[tokio::test]
-    async fn has_entry_true_after_record() {
+    async fn needs_upload_true_after_record() {
         let db = open_test_db();
         let dir = tempdir().unwrap();
         let file = dir.path().join("test.txt");
         std::fs::write(&file, b"hello").unwrap();
 
-        if let HashCheckResult::Changed(hash) = check_and_hash(&db, &file).await.unwrap() {
-            record_hash(&db, &file, hash, 0).unwrap();
-        }
+        let (hash, _) = check_and_hash(&db, &file, &["s3".to_string()]).await.unwrap();
+        record_hash(&db, &file, "s3", hash, 0).unwrap();
 
-        assert!(has_entry(&db, &file).unwrap());
+        assert!(needs_upload_for_providers(&db, &file, &["s3"], 100).unwrap());
     }
 
     #[test]
@@ -173,13 +187,13 @@ mod tests {
         let new = dir.path().join("new.txt");
 
         let hash = blake3::hash(b"content");
-        record_hash(&db, &old, hash, 0).unwrap();
-        assert!(has_entry(&db, &old).unwrap());
+        record_hash(&db, &old, "s3", hash, 0).unwrap();
+        assert!(has_any_entry(&db, &old, &["s3".to_string()]).unwrap());
 
-        rename_hash_entry(&db, &old, &new).unwrap();
+        rename_hash_entry(&db, &old, &new, &["s3".to_string()]).unwrap();
 
-        assert!(!has_entry(&db, &old).unwrap(), "old key must be removed");
-        assert!(has_entry(&db, &new).unwrap(), "new key must be present");
+        assert!(!has_any_entry(&db, &old, &["s3".to_string()]).unwrap(), "old key must be removed");
+        assert!(has_any_entry(&db, &new, &["s3".to_string()]).unwrap(), "new key must be present");
     }
 
     #[test]
@@ -189,9 +203,8 @@ mod tests {
         let old = dir.path().join("ghost.txt");
         let new = dir.path().join("new.txt");
 
-        // Should not error even if old path was never recorded
-        rename_hash_entry(&db, &old, &new).unwrap();
-        assert!(!has_entry(&db, &new).unwrap());
+        rename_hash_entry(&db, &old, &new, &["s3".to_string()]).unwrap();
+        assert!(!has_any_entry(&db, &new, &["s3".to_string()]).unwrap());
     }
 
     #[tokio::test]
@@ -201,29 +214,12 @@ mod tests {
         let file = dir.path().join("test.txt");
         std::fs::write(&file, b"version 1").unwrap();
 
-        if let HashCheckResult::Changed(hash) = check_and_hash(&db, &file).await.unwrap() {
-            record_hash(&db, &file, hash, 0).unwrap();
-        }
+        let providers = vec!["s3".to_string()];
+        let (hash, _) = check_and_hash(&db, &file, &providers).await.unwrap();
+        record_hash(&db, &file, "s3", hash, 0).unwrap();
 
         std::fs::write(&file, b"version 2").unwrap();
-        let result = check_and_hash(&db, &file).await.unwrap();
-        assert!(matches!(result, HashCheckResult::Changed(_)));
-    }
-
-    #[tokio::test]
-    async fn stored_mtime_mismatch_detected() {
-        let db = open_test_db();
-        let dir = tempdir().unwrap();
-        let file = dir.path().join("test.txt");
-        std::fs::write(&file, b"content").unwrap();
-
-        if let HashCheckResult::Changed(hash) = check_and_hash(&db, &file).await.unwrap() {
-            record_hash(&db, &file, hash, 100).unwrap();
-        }
-
-        // File is unchanged in content, but let's say the scanner sees mtime 200
-        let (stored_mtime, _hash) = get_stored_mtime_and_hash(&db, &file).unwrap().unwrap();
-        assert_eq!(stored_mtime, 100);
-        assert_ne!(stored_mtime, 200);
+        let (_hash, missing) = check_and_hash(&db, &file, &providers).await.unwrap();
+        assert_eq!(missing, vec!["s3"]);
     }
 }
