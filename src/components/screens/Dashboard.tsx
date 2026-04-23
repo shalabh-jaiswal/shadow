@@ -3,6 +3,7 @@ import { useActivityStore, selectFiltered, type FilterStatus } from '../../store
 import { useStatsStore } from '../../store/statsStore';
 import { useScanProgress } from '../../hooks/useScanProgress';
 import { ActivityFeed } from '../shared/ActivityFeed';
+import { RecoveryStatus } from '../shared/RecoveryStatus';
 import { ipc } from '../../ipc';
 
 function formatBytes(bytes: number): string {
@@ -136,6 +137,9 @@ export function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* System Sync Status */}
+      <RecoveryStatus />
 
       {/* Activity Feed */}
       <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
