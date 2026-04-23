@@ -8,6 +8,7 @@ import { About } from './components/screens/About';
 import { useFoldersStore } from './store/foldersStore';
 import { useProviderStore } from './store/providerStore';
 import { useActivityFeed } from './hooks/useActivityFeed';
+import { useGlobalScanSchedule } from './hooks/useGlobalScanSchedule';
 
 type Screen = 'dashboard' | 'folders' | 'providers' | 'settings' | 'about';
 
@@ -18,6 +19,7 @@ export default function App() {
 
   // Subscribe to activity events globally
   useActivityFeed();
+  useGlobalScanSchedule();
 
   useEffect(() => {
     fetchFolders();
