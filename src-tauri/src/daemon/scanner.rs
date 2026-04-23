@@ -69,6 +69,7 @@ pub async fn scan_all_folders(
 
     let mut aggregate_stats = ScanStats::default();
     let trigger_str = trigger.as_str().to_string();
+    let start_time = Instant::now();
 
     for folder in &watched_folders {
         let folder_path = PathBuf::from(folder);
@@ -123,6 +124,16 @@ pub async fn scan_all_folders(
         .scanned
         .saturating_sub(aggregate_stats.queued);
 
+    let duration = start_time.elapsed();
+    tracing::info!(
+        trigger = %trigger_str,
+        scanned = aggregate_stats.scanned,
+        queued = aggregate_stats.queued,
+        skipped = files_skipped,
+        duration_ms = duration.as_millis(),
+        "Recovery scan complete"
+    );
+
     let _ = app_handle.emit(
         "scan_complete",
         ScanCompletePayload {
@@ -151,6 +162,7 @@ pub fn spawn_scan(
     tokio::spawn(async move {
         let folder_str = folder_path.to_string_lossy().to_string();
         let trigger_str = trigger.as_str().to_string();
+        let start_time = Instant::now();
 
         let added_at = {
             let key = format!("folder_added_at:{}", folder_str);
@@ -174,6 +186,18 @@ pub fn spawn_scan(
         {
             Ok(stats) => {
                 let files_skipped = stats.scanned.saturating_sub(stats.queued);
+                let duration = start_time.elapsed();
+                
+                tracing::info!(
+                    folder = %folder_str,
+                    trigger = %trigger_str,
+                    scanned = stats.scanned,
+                    queued = stats.queued,
+                    skipped = files_skipped,
+                    duration_ms = duration.as_millis(),
+                    "Folder scan complete"
+                );
+
                 let _ = app.emit(
                     "scan_complete",
                     ScanCompletePayload {
