@@ -265,7 +265,11 @@ pub async fn start(config: SharedConfig, app_handle: AppHandle) -> Result<Daemon
                 );
 
                 is_scanning_clone.store(true, Ordering::SeqCst);
-                let provider_names: Vec<String> = provider_rx_clone.borrow().iter().map(|p| p.name().to_string()).collect();
+                let provider_names: Vec<String> = provider_rx_clone
+                    .borrow()
+                    .iter()
+                    .map(|p| p.name().to_string())
+                    .collect();
                 scanner::scan_all_folders(
                     &config_clone,
                     &db_clone,
@@ -341,7 +345,13 @@ impl DaemonState {
     /// Spawn a background scan for the given folder path.
     /// Files with no sled entry are enqueued for upload.
     pub fn spawn_scan(&self, folder_path: PathBuf) {
-        let provider_names: Vec<String> = self.provider_tx.subscribe().borrow().iter().map(|p| p.name().to_string()).collect();
+        let provider_names: Vec<String> = self
+            .provider_tx
+            .subscribe()
+            .borrow()
+            .iter()
+            .map(|p| p.name().to_string())
+            .collect();
         scanner::spawn_scan(
             folder_path,
             self.config.clone(),
@@ -370,9 +380,20 @@ impl DaemonState {
 
         tokio::spawn(async move {
             is_scanning.store(true, Ordering::SeqCst);
-            let provider_names: Vec<String> = provider_rx.borrow().iter().map(|p| p.name().to_string()).collect();
-            scanner::scan_all_folders(&config, &db, &tx, &app_handle, scanner::ScanTrigger::Manual, provider_names)
-                .await;
+            let provider_names: Vec<String> = provider_rx
+                .borrow()
+                .iter()
+                .map(|p| p.name().to_string())
+                .collect();
+            scanner::scan_all_folders(
+                &config,
+                &db,
+                &tx,
+                &app_handle,
+                scanner::ScanTrigger::Manual,
+                provider_names,
+            )
+            .await;
             is_scanning.store(false, Ordering::SeqCst);
         });
 

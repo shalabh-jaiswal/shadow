@@ -160,7 +160,18 @@ pub fn spawn_scan(
                 .and_then(|v| v.as_ref().try_into().ok().map(u64::from_le_bytes))
         };
 
-        match run_scan(folder_path, cfg, db, tx, app.clone(), trigger, added_at, provider_names).await {
+        match run_scan(
+            folder_path,
+            cfg,
+            db,
+            tx,
+            app.clone(),
+            trigger,
+            added_at,
+            provider_names,
+        )
+        .await
+        {
             Ok(stats) => {
                 let files_skipped = stats.scanned.saturating_sub(stats.queued);
                 let _ = app.emit(
@@ -253,7 +264,8 @@ async fn run_scan(
                 continue;
             }
 
-            current_mtime = meta.modified()
+            current_mtime = meta
+                .modified()
                 .ok()
                 .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                 .map(|d| d.as_millis() as u64)

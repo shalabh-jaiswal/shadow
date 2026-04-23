@@ -58,7 +58,11 @@ pub async fn start(
             _ => {}
         }
 
-        let provider_names: Vec<String> = provider_rx.borrow().iter().map(|p| p.name().to_string()).collect();
+        let provider_names: Vec<String> = provider_rx
+            .borrow()
+            .iter()
+            .map(|p| p.name().to_string())
+            .collect();
 
         match hasher::check_and_hash(&db, &path, &provider_names).await {
             Ok((hash, missing_providers)) => {
@@ -72,7 +76,7 @@ pub async fn start(
                             error: None,
                         },
                     );
-                    
+
                     // Even if unchanged, we should update the mtime for all providers
                     // so the scanner's fast-path works correctly if only mtime was touched.
                     let mtime_millis = tokio::fs::metadata(&path)
@@ -82,7 +86,7 @@ pub async fn start(
                         .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                         .map(|d| d.as_millis() as u64)
                         .unwrap_or(0);
-                        
+
                     for provider in &provider_names {
                         let _ = hasher::record_hash(&db, &path, provider, hash, mtime_millis);
                     }
@@ -106,7 +110,7 @@ pub async fn start(
                 let host = host.clone();
                 let stats = stats.clone();
                 let config = Arc::clone(&config);
-                
+
                 // Snapshot the current providers, filtered by what actually needs uploading
                 let providers: Vec<DynProvider> = provider_rx
                     .borrow()
@@ -209,7 +213,13 @@ pub async fn start(
 
                         for (provider_name, succeeded) in &results {
                             if *succeeded {
-                                if let Err(e) = hasher::record_hash(&db, &path, provider_name, hash, mtime_millis) {
+                                if let Err(e) = hasher::record_hash(
+                                    &db,
+                                    &path,
+                                    provider_name,
+                                    hash,
+                                    mtime_millis,
+                                ) {
                                     tracing::error!(
                                         path = %path.display(),
                                         provider = %provider_name,
@@ -219,7 +229,7 @@ pub async fn start(
                                 }
                             }
                         }
-                        
+
                         // Record last-backup timestamp for the parent watched folder,
                         // then emit folder_updated so the frontend re-fetches AFTER
                         // the sled write is complete (avoids the file_uploaded race).

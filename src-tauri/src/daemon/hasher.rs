@@ -90,7 +90,12 @@ pub fn has_any_entry(db: &Db, path: &Path, providers: &[String]) -> Result<bool>
     Ok(false)
 }
 
-pub fn rename_hash_entry(db: &Db, old_path: &Path, new_path: &Path, providers: &[String]) -> Result<()> {
+pub fn rename_hash_entry(
+    db: &Db,
+    old_path: &Path,
+    new_path: &Path,
+    providers: &[String],
+) -> Result<()> {
     let old_str = old_path.to_string_lossy();
     let new_str = new_path.to_string_lossy();
     for provider in providers {
@@ -151,7 +156,7 @@ mod tests {
         let providers = vec!["s3".to_string()];
         let (hash, missing) = check_and_hash(&db, &file, &providers).await.unwrap();
         assert_eq!(missing.len(), 1);
-        
+
         record_hash(&db, &file, "s3", hash, 100).unwrap();
 
         let (_hash, missing2) = check_and_hash(&db, &file, &providers).await.unwrap();
@@ -173,7 +178,9 @@ mod tests {
         let file = dir.path().join("test.txt");
         std::fs::write(&file, b"hello").unwrap();
 
-        let (hash, _) = check_and_hash(&db, &file, &["s3".to_string()]).await.unwrap();
+        let (hash, _) = check_and_hash(&db, &file, &["s3".to_string()])
+            .await
+            .unwrap();
         record_hash(&db, &file, "s3", hash, 0).unwrap();
 
         assert!(needs_upload_for_providers(&db, &file, &["s3"], 100).unwrap());
@@ -192,8 +199,14 @@ mod tests {
 
         rename_hash_entry(&db, &old, &new, &["s3".to_string()]).unwrap();
 
-        assert!(!has_any_entry(&db, &old, &["s3".to_string()]).unwrap(), "old key must be removed");
-        assert!(has_any_entry(&db, &new, &["s3".to_string()]).unwrap(), "new key must be present");
+        assert!(
+            !has_any_entry(&db, &old, &["s3".to_string()]).unwrap(),
+            "old key must be removed"
+        );
+        assert!(
+            has_any_entry(&db, &new, &["s3".to_string()]).unwrap(),
+            "new key must be present"
+        );
     }
 
     #[test]
