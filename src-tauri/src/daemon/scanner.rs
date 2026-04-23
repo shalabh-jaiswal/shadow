@@ -239,20 +239,25 @@ async fn run_scan(
     for path in &files {
         scanned += 1;
 
+        let needs_upload;
+        let current_mtime;
+
         if let Ok(meta) = tokio::fs::metadata(path).await {
             // Skip 0-byte files to match live watcher/queue behavior
             if meta.len() == 0 {
                 continue;
             }
 
+            current_mtime = meta.modified()
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_millis() as u64)
+                .unwrap_or(0);
+
             // In forward_only mode, skip files modified before the folder was added
             if folder_mode == "forward_only" {
-                if let (Some(added_ts), Ok(modified)) = (added_at, meta.modified()) {
-                    let modified_ts = modified
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_millis() as u64;
-                    if modified_ts < added_ts {
+                if let Some(added_ts) = added_at {
+                    if current_mtime > 0 && current_mtime < added_ts {
                         continue;
                     }
                 }
@@ -263,14 +268,48 @@ async fn run_scan(
             continue;
         }
 
-        // Check sled — if entry exists, skip (resumable).
-        // A full hash check here would destroy disk I/O on 500GB folders.
-        let needs_upload = tokio::task::spawn_blocking({
+        // Fast-path mtime check
+        let mtime_check_result = tokio::task::spawn_blocking({
             let path = path.clone();
             let db = db.clone();
-            move || check_needs_upload(&path, &db)
+            move || crate::daemon::hasher::get_stored_mtime_and_hash(&db, &path)
         })
         .await??;
+
+        match mtime_check_result {
+            None => {
+                // File was never backed up -> upload
+                needs_upload = true;
+            }
+            Some((stored_mtime, _hash)) if stored_mtime == current_mtime && stored_mtime != 0 => {
+                // File is backed up and mtime perfectly matches -> skip
+                needs_upload = false;
+            }
+            Some((_stored_mtime, stored_hash)) => {
+                // Mtime differs (or is 0) -> we must hash to verify content changes
+                let hash_result = match crate::daemon::hasher::check_and_hash(&db, path).await {
+                    Ok(res) => res,
+                    Err(e) => {
+                        tracing::warn!(error = %e, path = %path.display(), "failed to hash file during scan");
+                        continue;
+                    }
+                };
+
+                match hash_result {
+                    crate::daemon::hasher::HashCheckResult::Changed(_) => {
+                        needs_upload = true;
+                    }
+                    crate::daemon::hasher::HashCheckResult::Unchanged(_) => {
+                        // Content hasn't changed, but mtime did.
+                        // Update the stored mtime in sled so future scans are fast again.
+                        // We safely reconstruct the blake3::Hash from the stored bytes.
+                        let hash_obj = blake3::Hash::from_bytes(stored_hash);
+                        let _ = crate::daemon::hasher::record_hash(&db, path, hash_obj, current_mtime);
+                        needs_upload = false;
+                    }
+                }
+            }
+        }
 
         if needs_upload {
             // Don't block if queue is full — skip and let live watcher catch it later
@@ -311,42 +350,4 @@ async fn run_scan(
         queued,
         total_bytes,
     })
-}
-
-/// Returns true if the file needs to be uploaded (no stored hash entry).
-/// This is a synchronous function meant to run in spawn_blocking.
-/// The live watcher + hasher handles the "changed since last backup" case.
-/// The scanner's job is just to find files that have NEVER been uploaded (no sled entry).
-fn check_needs_upload(path: &std::path::Path, db: &Db) -> Result<bool> {
-    let key = path.to_string_lossy();
-    Ok(db.get(key.as_bytes())?.is_none())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use tempfile::NamedTempFile;
-
-    fn open_temp_db() -> sled::Db {
-        sled::Config::new().temporary(true).open().unwrap()
-    }
-
-    #[test]
-    fn new_file_needs_upload() {
-        let db = open_temp_db();
-        let f = NamedTempFile::new().unwrap();
-        std::fs::write(f.path(), b"hello").unwrap();
-        assert!(check_needs_upload(f.path(), &db).unwrap());
-    }
-
-    #[test]
-    fn file_with_stored_hash_skipped() {
-        let db = open_temp_db();
-        let f = NamedTempFile::new().unwrap();
-        std::fs::write(f.path(), b"hello").unwrap();
-        // Store a fake hash
-        let key = f.path().to_string_lossy();
-        db.insert(key.as_bytes(), b"fakehash").unwrap();
-        assert!(!check_needs_upload(f.path(), &db).unwrap());
-    }
 }

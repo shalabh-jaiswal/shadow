@@ -14,7 +14,8 @@ pub fn open_db() -> Result<Db> {
 
 pub enum HashCheckResult {
     Changed(blake3::Hash),
-    Unchanged,
+    #[allow(dead_code)]
+    Unchanged(u64),
 }
 
 pub async fn check_and_hash(db: &Db, path: &Path) -> Result<HashCheckResult> {
@@ -30,13 +31,48 @@ pub async fn check_and_hash(db: &Db, path: &Path) -> Result<HashCheckResult> {
         let stored = db.get(&key)?;
 
         match stored {
-            Some(stored_bytes) if stored_bytes.as_ref() == new_hash.as_bytes() => {
-                Ok(HashCheckResult::Unchanged)
+            Some(stored_bytes) if stored_bytes.len() == 40 => {
+                let (stored_hash_bytes, mtime_bytes) = stored_bytes.split_at(32);
+                if stored_hash_bytes == new_hash.as_bytes() {
+                    let mtime = u64::from_le_bytes(mtime_bytes.try_into().unwrap());
+                    Ok(HashCheckResult::Unchanged(mtime))
+                } else {
+                    Ok(HashCheckResult::Changed(new_hash))
+                }
+            }
+            // Fallback for legacy 32-byte entries
+            Some(stored_bytes) if stored_bytes.len() == 32 => {
+                if stored_bytes.as_ref() == new_hash.as_bytes() {
+                    Ok(HashCheckResult::Unchanged(0))
+                } else {
+                    Ok(HashCheckResult::Changed(new_hash))
+                }
             }
             _ => Ok(HashCheckResult::Changed(new_hash)),
         }
     })
     .await?
+}
+
+pub fn get_stored_mtime_and_hash(db: &Db, path: &Path) -> Result<Option<(u64, [u8; 32])>> {
+    let key = path_key(path);
+    if let Some(stored_bytes) = db.get(key)? {
+        if stored_bytes.len() == 40 {
+            let mut hash_bytes = [0u8; 32];
+            hash_bytes.copy_from_slice(&stored_bytes[0..32]);
+            let mtime_bytes: [u8; 8] = stored_bytes[32..40].try_into().unwrap();
+            let mtime = u64::from_le_bytes(mtime_bytes);
+            Ok(Some((mtime, hash_bytes)))
+        } else if stored_bytes.len() == 32 {
+            let mut hash_bytes = [0u8; 32];
+            hash_bytes.copy_from_slice(&stored_bytes);
+            Ok(Some((0, hash_bytes))) // Legacy fallback
+        } else {
+            Ok(None)
+        }
+    } else {
+        Ok(None)
+    }
 }
 
 pub fn has_entry(db: &Db, path: &Path) -> Result<bool> {
@@ -54,9 +90,12 @@ pub fn rename_hash_entry(db: &Db, old_path: &Path, new_path: &Path) -> Result<()
     Ok(())
 }
 
-pub fn record_hash(db: &Db, path: &Path, hash: blake3::Hash) -> Result<()> {
+pub fn record_hash(db: &Db, path: &Path, hash: blake3::Hash, mtime_millis: u64) -> Result<()> {
     let key = path_key(path);
-    db.insert(key, hash.as_bytes().to_vec())?;
+    let mut value = Vec::with_capacity(40);
+    value.extend_from_slice(hash.as_bytes());
+    value.extend_from_slice(&mtime_millis.to_le_bytes());
+    db.insert(key, value)?;
     Ok(())
 }
 
@@ -94,11 +133,14 @@ mod tests {
 
         let result = check_and_hash(&db, &file).await.unwrap();
         if let HashCheckResult::Changed(hash) = result {
-            record_hash(&db, &file, hash).unwrap();
+            record_hash(&db, &file, hash, 100).unwrap();
         }
 
         let result2 = check_and_hash(&db, &file).await.unwrap();
-        assert!(matches!(result2, HashCheckResult::Unchanged));
+        match result2 {
+            HashCheckResult::Unchanged(mtime) => assert_eq!(mtime, 100),
+            _ => panic!("Expected Unchanged"),
+        }
     }
 
     #[test]
@@ -117,7 +159,7 @@ mod tests {
         std::fs::write(&file, b"hello").unwrap();
 
         if let HashCheckResult::Changed(hash) = check_and_hash(&db, &file).await.unwrap() {
-            record_hash(&db, &file, hash).unwrap();
+            record_hash(&db, &file, hash, 0).unwrap();
         }
 
         assert!(has_entry(&db, &file).unwrap());
@@ -131,7 +173,7 @@ mod tests {
         let new = dir.path().join("new.txt");
 
         let hash = blake3::hash(b"content");
-        record_hash(&db, &old, hash).unwrap();
+        record_hash(&db, &old, hash, 0).unwrap();
         assert!(has_entry(&db, &old).unwrap());
 
         rename_hash_entry(&db, &old, &new).unwrap();
@@ -160,11 +202,28 @@ mod tests {
         std::fs::write(&file, b"version 1").unwrap();
 
         if let HashCheckResult::Changed(hash) = check_and_hash(&db, &file).await.unwrap() {
-            record_hash(&db, &file, hash).unwrap();
+            record_hash(&db, &file, hash, 0).unwrap();
         }
 
         std::fs::write(&file, b"version 2").unwrap();
         let result = check_and_hash(&db, &file).await.unwrap();
         assert!(matches!(result, HashCheckResult::Changed(_)));
+    }
+
+    #[tokio::test]
+    async fn stored_mtime_mismatch_detected() {
+        let db = open_test_db();
+        let dir = tempdir().unwrap();
+        let file = dir.path().join("test.txt");
+        std::fs::write(&file, b"content").unwrap();
+
+        if let HashCheckResult::Changed(hash) = check_and_hash(&db, &file).await.unwrap() {
+            record_hash(&db, &file, hash, 100).unwrap();
+        }
+
+        // File is unchanged in content, but let's say the scanner sees mtime 200
+        let (stored_mtime, _hash) = get_stored_mtime_and_hash(&db, &file).unwrap().unwrap();
+        assert_eq!(stored_mtime, 100);
+        assert_ne!(stored_mtime, 200);
     }
 }

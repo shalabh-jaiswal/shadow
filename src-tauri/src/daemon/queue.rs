@@ -59,7 +59,7 @@ pub async fn start(
         }
 
         match hasher::check_and_hash(&db, &path).await {
-            Ok(HashCheckResult::Unchanged) => {
+            Ok(HashCheckResult::Unchanged(_)) => {
                 emit_file_event(
                     &app_handle,
                     "file_skipped",
@@ -175,7 +175,16 @@ pub async fn start(
                     if any_ok {
                         stats.record_upload(file_bytes);
                         stats.persist(&db);
-                        if let Err(e) = hasher::record_hash(&db, &path, hash) {
+
+                        let mtime_millis = tokio::fs::metadata(&path)
+                            .await
+                            .ok()
+                            .and_then(|m| m.modified().ok())
+                            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                            .map(|d| d.as_millis() as u64)
+                            .unwrap_or(0);
+
+                        if let Err(e) = hasher::record_hash(&db, &path, hash, mtime_millis) {
                             tracing::error!(path = %path.display(), error = %e, "failed to record hash after upload");
                         }
                         // Record last-backup timestamp for the parent watched folder,
