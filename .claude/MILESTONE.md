@@ -96,7 +96,7 @@ All emitted via `app_handle.emit()`:
 
 ---
 
-## Active: Post-M6 Feature Development (v0.10.0)
+## Active: Post-M6 Feature Development (v0.11.0)
 v0.3.0 (2026-03-30): Periodic reconciliation for failed uploads, per-folder backup mode (full vs forward-only).
 v0.4.0 (2026-03-30): About screen, GitHub/bug report links via system browser, fixed README links.
 v0.5.0 (2026-03-30): Fix duplicate tray icon, dynamic app version on About page.
@@ -105,6 +105,7 @@ v0.7.0 (2026-03-31): Update app icons.
 v0.8.0 (2026-03-31): Update app icons (blue variant).
 v0.9.0 (2026-04-10): Ignore temp/junk files (vim swap, Office locks, .tmp, trailing tilde, OS metadata) and skip 0-byte placeholder files.
 v0.10.0 (2026-04-20): Parallel provider uploads with per-provider live status, dynamic provider reload on config change, platform startup entry (LaunchAgent/XDG) written on launch.
+v0.11.0 (2026-04-23): Per-provider hash tracking in sled so enabling a new provider re-uploads existing files to it; mtime fast-path in scanner; system sync status card on Dashboard.
 
 ---
 
