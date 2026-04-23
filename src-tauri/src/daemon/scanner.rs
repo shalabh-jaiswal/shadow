@@ -187,7 +187,7 @@ pub fn spawn_scan(
             Ok(stats) => {
                 let files_skipped = stats.scanned.saturating_sub(stats.queued);
                 let duration = start_time.elapsed();
-                
+
                 tracing::info!(
                     folder = %folder_str,
                     trigger = %trigger_str,
