@@ -190,7 +190,7 @@ pub async fn start(config: SharedConfig, app_handle: AppHandle) -> Result<Daemon
                 if let Ok(contents) = std::fs::read_to_string(&path) {
                     let target_path = PathBuf::from(contents.trim());
                     if target_path.exists() {
-                        tracing::info!("Spool recovered job on startup: {:?}", target_path);
+                        tracing::debug!("Spool recovered job on startup: {:?}", target_path);
                         let _ = upload_tx.try_send(target_path);
                     }
                     // Always delete the job file to avoid infinitely retrying dead paths
@@ -246,12 +246,14 @@ pub async fn start(config: SharedConfig, app_handle: AppHandle) -> Result<Daemon
     let debouncer_handle = {
         let config = config.clone();
         let paused_ref = paused.clone();
+        let app_handle_clone = app_handle.clone();
         tokio::spawn(debouncer::start(
             watcher_rx,
             upload_tx.clone(),
             rename_tx,
             config,
             paused_ref,
+            app_handle_clone,
         ))
     };
     task_handles.push(debouncer_handle);

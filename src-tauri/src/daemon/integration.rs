@@ -1,5 +1,5 @@
-use std::fs;
 use crate::path_utils::get_jobs_dir;
+use std::fs;
 
 pub fn setup_os_integration() -> anyhow::Result<()> {
     #[cfg(target_os = "macos")]
@@ -50,6 +50,8 @@ fn setup_macos_quick_action() -> anyhow::Result<()> {
             <key>NSSendFileTypes</key>
             <array>
                 <string>public.item</string>
+                <string>public.folder</string>
+                <string>public.directory</string>
             </array>
         </dict>
     </array>

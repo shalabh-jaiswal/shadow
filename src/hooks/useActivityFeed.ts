@@ -66,38 +66,14 @@ export function useActivityFeed() {
 
   useEffect(() => {
     const unlisteners = [
-      events.onFileQueued((e) => {
-        console.log('Event: onFileQueued', e);
-        addEntry(fileEventToActivityEntry(e, 'queued'));
-      }),
-      events.onFileUploading((e) => {
-        console.log('Event: onFileUploading', e);
-        addEntry(fileEventToActivityEntry(e, 'uploading'));
-      }),
-      events.onFileUploaded((e) => {
-        console.log('Event: onFileUploaded', e);
-        addEntry(fileEventToActivityEntry(e, 'uploaded'));
-      }),
-      events.onFileSkipped((e) => {
-        console.log('Event: onFileSkipped', e);
-        addEntry(fileEventToActivityEntry(e, 'skipped'));
-      }),
-      events.onFileError((e) => {
-        console.log('Event: onFileError', e);
-        addEntry(fileEventToActivityEntry(e, 'error'));
-      }),
-      events.onFileFailed((e) => {
-        console.log('Event: onFileFailed', e);
-        addEntry(fileEventToActivityEntry(e, 'failed'));
-      }),
-      events.onFileRenamed((e) => {
-        console.log('Event: onFileRenamed', e);
-        addEntry(renamedEventToActivityEntry(e));
-      }),
-      events.onFileRenameError((e) => {
-        console.log('Event: onFileRenameError', e);
-        addEntry(renameErrorEventToActivityEntry(e));
-      }),
+      events.onFileQueued((e) => addEntry(fileEventToActivityEntry(e, 'queued'))),
+      events.onFileUploading((e) => addEntry(fileEventToActivityEntry(e, 'uploading'))),
+      events.onFileUploaded((e) => addEntry(fileEventToActivityEntry(e, 'uploaded'))),
+      events.onFileSkipped((e) => addEntry(fileEventToActivityEntry(e, 'skipped'))),
+      events.onFileError((e) => addEntry(fileEventToActivityEntry(e, 'error'))),
+      events.onFileFailed((e) => addEntry(fileEventToActivityEntry(e, 'failed'))),
+      events.onFileRenamed((e) => addEntry(renamedEventToActivityEntry(e))),
+      events.onFileRenameError((e) => addEntry(renameErrorEventToActivityEntry(e))),
     ];
 
     return () => {

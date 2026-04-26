@@ -1,19 +1,23 @@
 use crate::config::SharedConfig;
+use crate::daemon::filter;
 use notify::event::{ModifyKind, RenameMode};
 use notify::{Event, EventKind};
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::sync::{atomic::AtomicBool, atomic::Ordering, Arc};
 use std::time::{Duration, Instant};
+use tauri_plugin_notification::NotificationExt;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
+use walkdir::WalkDir;
 
-pub async fn start(
+pub async fn start<R: tauri::Runtime>(
     mut rx: mpsc::Receiver<Event>,
     upload_tx: mpsc::Sender<PathBuf>,
     rename_tx: mpsc::Sender<(PathBuf, PathBuf)>,
     config: SharedConfig,
     paused: Arc<AtomicBool>,
+    app_handle: tauri::AppHandle<R>,
 ) {
     let mut timers: HashMap<PathBuf, JoinHandle<()>> = HashMap::new();
 
@@ -118,6 +122,8 @@ pub async fn start(
             }
             _ => {
                 let debounce_ms = config.read().await.daemon.debounce_ms;
+                let follow_symlinks = config.read().await.daemon.follow_symlinks;
+
                 for path in event.paths {
                     if path.extension().and_then(|s| s.to_str()) == Some("shadow_job") {
                         let jobs_dir = crate::path_utils::get_jobs_dir();
@@ -125,14 +131,64 @@ pub async fn start(
                             if let Ok(contents) = std::fs::read_to_string(&path) {
                                 let target_path = std::path::PathBuf::from(contents.trim());
                                 if target_path.exists() {
-                                    tracing::info!("Spool intercepted job: {:?} -> {:?}", path, target_path);
-                                    if upload_tx.try_send(target_path).is_ok() {
+                                    tracing::debug!(
+                                        "Spool intercepted job: {:?} -> {:?}",
+                                        path,
+                                        target_path
+                                    );
+
+                                    let display_name = target_path
+                                        .file_name()
+                                        .and_then(|n| n.to_str())
+                                        .unwrap_or("Unknown")
+                                        .to_string();
+
+                                    let success = if target_path.is_dir() {
+                                        // Walk directory and queue all files
+                                        let upload_tx_clone = upload_tx.clone();
+                                        let target_path_clone = target_path.clone();
+                                        tokio::task::spawn_blocking(move || {
+                                            for entry in WalkDir::new(&target_path_clone)
+                                                .follow_links(follow_symlinks)
+                                                .into_iter()
+                                                .filter_map(|e| e.ok())
+                                                .filter(|e| e.file_type().is_file())
+                                                .filter(|e| !filter::should_ignore(e.path()))
+                                            {
+                                                let _ = upload_tx_clone.try_send(entry.path().to_path_buf());
+                                            }
+                                        });
+                                        let _ = app_handle.notification().builder()
+                                            .title("Shadow Backup")
+                                            .body(format!("Backing up folder: {}", display_name))
+                                            .show();
+                                        true
+                                    } else {
+                                        if upload_tx.try_send(target_path.clone()).is_ok() {
+                                            let _ = app_handle.notification().builder()
+                                                .title("Shadow Backup")
+                                                .body(format!("Backing up file: {}", display_name))
+                                                .show();
+                                            true
+                                        } else {
+                                            false
+                                        }
+                                    };
+
+                                    if success {
                                         // Acknowledge and destroy
                                         if let Err(e) = std::fs::remove_file(&path) {
-                                            tracing::error!("Failed to delete job file {:?}: {}", path, e);
+                                            tracing::error!(
+                                                "Failed to delete job file {:?}: {}",
+                                                path,
+                                                e
+                                            );
                                         }
                                     } else {
-                                        tracing::warn!("Upload queue full, keeping job file for later: {:?}", path);
+                                        tracing::warn!(
+                                            "Upload queue full, keeping job file for later: {:?}",
+                                            path
+                                        );
                                     }
                                 } else {
                                     tracing::warn!("Target path in job file does not exist, deleting job: {:?}", path);
@@ -166,6 +222,7 @@ pub async fn start(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tauri::Manager;
     use crate::config::{AppConfig, DaemonConfig};
     use std::sync::{atomic::AtomicBool, Arc};
     use tokio::sync::RwLock;
@@ -192,7 +249,8 @@ mod tests {
         let config = make_config(50);
         let paused = Arc::new(AtomicBool::new(false));
 
-        tokio::spawn(start(watcher_rx, upload_tx, rename_tx, config, paused));
+        let app = tauri::test::mock_app();
+        tokio::spawn(start(watcher_rx, upload_tx, rename_tx, config, paused, app.app_handle().clone()));
 
         let path = PathBuf::from("/tmp/test_file.txt");
 
@@ -223,7 +281,8 @@ mod tests {
         let config = make_config(50);
         let paused = Arc::new(AtomicBool::new(false));
 
-        tokio::spawn(start(watcher_rx, upload_tx, rename_tx, config, paused));
+        let app = tauri::test::mock_app();
+        tokio::spawn(start(watcher_rx, upload_tx, rename_tx, config, paused, app.app_handle().clone()));
 
         let old = PathBuf::from("/tmp/old.txt");
         let new = PathBuf::from("/tmp/new.txt");
@@ -256,7 +315,8 @@ mod tests {
         let config = make_config(50);
         let paused = Arc::new(AtomicBool::new(false));
 
-        tokio::spawn(start(watcher_rx, upload_tx, rename_tx, config, paused));
+        let app = tauri::test::mock_app();
+        tokio::spawn(start(watcher_rx, upload_tx, rename_tx, config, paused, app.app_handle().clone()));
 
         let old = PathBuf::from("/tmp/from.txt");
         let new = PathBuf::from("/tmp/to.txt");
@@ -302,7 +362,8 @@ mod tests {
         let config = make_config(50);
         let paused = Arc::new(AtomicBool::new(false));
 
-        tokio::spawn(start(watcher_rx, upload_tx, rename_tx, config, paused));
+        let app = tauri::test::mock_app();
+        tokio::spawn(start(watcher_rx, upload_tx, rename_tx, config, paused, app.app_handle().clone()));
 
         let new = PathBuf::from("/tmp/orphan_to.txt");
 
@@ -332,7 +393,8 @@ mod tests {
         let config = make_config(50);
         let paused = Arc::new(AtomicBool::new(false));
 
-        tokio::spawn(start(watcher_rx, upload_tx, rename_tx, config, paused));
+        let app = tauri::test::mock_app();
+        tokio::spawn(start(watcher_rx, upload_tx, rename_tx, config, paused, app.app_handle().clone()));
 
         let old1 = PathBuf::from("/tmp/old1.txt");
         let new1 = PathBuf::from("/tmp/new1.txt");
