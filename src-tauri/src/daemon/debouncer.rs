@@ -155,17 +155,22 @@ pub async fn start<R: tauri::Runtime>(
                                                 .filter(|e| e.file_type().is_file())
                                                 .filter(|e| !filter::should_ignore(e.path()))
                                             {
-                                                let _ = upload_tx_clone.try_send(entry.path().to_path_buf());
+                                                let _ = upload_tx_clone
+                                                    .try_send(entry.path().to_path_buf());
                                             }
                                         });
-                                        let _ = app_handle.notification().builder()
+                                        let _ = app_handle
+                                            .notification()
+                                            .builder()
                                             .title("Shadow Backup")
                                             .body(format!("Backing up folder: {}", display_name))
                                             .show();
                                         true
                                     } else {
                                         if upload_tx.try_send(target_path.clone()).is_ok() {
-                                            let _ = app_handle.notification().builder()
+                                            let _ = app_handle
+                                                .notification()
+                                                .builder()
                                                 .title("Shadow Backup")
                                                 .body(format!("Backing up file: {}", display_name))
                                                 .show();
@@ -222,9 +227,9 @@ pub async fn start<R: tauri::Runtime>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tauri::Manager;
     use crate::config::{AppConfig, DaemonConfig};
     use std::sync::{atomic::AtomicBool, Arc};
+    use tauri::Manager;
     use tokio::sync::RwLock;
 
     fn make_config(debounce_ms: u64) -> SharedConfig {
@@ -250,7 +255,14 @@ mod tests {
         let paused = Arc::new(AtomicBool::new(false));
 
         let app = tauri::test::mock_app();
-        tokio::spawn(start(watcher_rx, upload_tx, rename_tx, config, paused, app.app_handle().clone()));
+        tokio::spawn(start(
+            watcher_rx,
+            upload_tx,
+            rename_tx,
+            config,
+            paused,
+            app.app_handle().clone(),
+        ));
 
         let path = PathBuf::from("/tmp/test_file.txt");
 
@@ -282,7 +294,14 @@ mod tests {
         let paused = Arc::new(AtomicBool::new(false));
 
         let app = tauri::test::mock_app();
-        tokio::spawn(start(watcher_rx, upload_tx, rename_tx, config, paused, app.app_handle().clone()));
+        tokio::spawn(start(
+            watcher_rx,
+            upload_tx,
+            rename_tx,
+            config,
+            paused,
+            app.app_handle().clone(),
+        ));
 
         let old = PathBuf::from("/tmp/old.txt");
         let new = PathBuf::from("/tmp/new.txt");
@@ -316,7 +335,14 @@ mod tests {
         let paused = Arc::new(AtomicBool::new(false));
 
         let app = tauri::test::mock_app();
-        tokio::spawn(start(watcher_rx, upload_tx, rename_tx, config, paused, app.app_handle().clone()));
+        tokio::spawn(start(
+            watcher_rx,
+            upload_tx,
+            rename_tx,
+            config,
+            paused,
+            app.app_handle().clone(),
+        ));
 
         let old = PathBuf::from("/tmp/from.txt");
         let new = PathBuf::from("/tmp/to.txt");
@@ -363,7 +389,14 @@ mod tests {
         let paused = Arc::new(AtomicBool::new(false));
 
         let app = tauri::test::mock_app();
-        tokio::spawn(start(watcher_rx, upload_tx, rename_tx, config, paused, app.app_handle().clone()));
+        tokio::spawn(start(
+            watcher_rx,
+            upload_tx,
+            rename_tx,
+            config,
+            paused,
+            app.app_handle().clone(),
+        ));
 
         let new = PathBuf::from("/tmp/orphan_to.txt");
 
@@ -394,7 +427,14 @@ mod tests {
         let paused = Arc::new(AtomicBool::new(false));
 
         let app = tauri::test::mock_app();
-        tokio::spawn(start(watcher_rx, upload_tx, rename_tx, config, paused, app.app_handle().clone()));
+        tokio::spawn(start(
+            watcher_rx,
+            upload_tx,
+            rename_tx,
+            config,
+            paused,
+            app.app_handle().clone(),
+        ));
 
         let old1 = PathBuf::from("/tmp/old1.txt");
         let new1 = PathBuf::from("/tmp/new1.txt");
