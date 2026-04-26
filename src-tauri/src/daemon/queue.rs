@@ -43,6 +43,11 @@ pub async fn start(
         // "New Text Document.txt" created before the user renames/writes to it).
         // A Modify event will fire once the user actually writes content.
         match tokio::fs::metadata(&path).await {
+            Ok(meta) if meta.is_dir() => {
+                // Silently skip directories — we only upload files.
+                // This prevents hash checks from failing on folders.
+                continue;
+            }
             Ok(meta) if meta.len() == 0 => {
                 emit_file_event(
                     &app_handle,
