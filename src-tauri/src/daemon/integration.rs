@@ -19,6 +19,7 @@ pub fn setup_os_integration() -> anyhow::Result<()> {
 
 #[cfg(target_os = "macos")]
 fn setup_macos_quick_action() -> anyhow::Result<()> {
+    use dirs;
     let home = dirs::home_dir().ok_or_else(|| anyhow::anyhow!("no home dir"))?;
     let services_dir = home.join("Library/Services");
     fs::create_dir_all(&services_dir)?;
@@ -272,6 +273,7 @@ done</string>
 
 #[cfg(target_os = "windows")]
 fn setup_windows_send_to() -> anyhow::Result<()> {
+    use std::path::PathBuf;
     let app_data = std::env::var("APPDATA").map(PathBuf::from)?;
     let send_to_dir = app_data.join("Microsoft/Windows/SendTo");
     fs::create_dir_all(&send_to_dir)?;
@@ -295,6 +297,7 @@ echo %~1 > "{jobs_dir_str}\!job_id!.shadow_job"
 
 #[cfg(target_os = "linux")]
 fn setup_linux_nautilus_script() -> anyhow::Result<()> {
+    use dirs;
     let home = dirs::home_dir().ok_or_else(|| anyhow::anyhow!("no home dir"))?;
     let scripts_dir = home.join(".local/share/nautilus/scripts");
     fs::create_dir_all(&scripts_dir)?;
