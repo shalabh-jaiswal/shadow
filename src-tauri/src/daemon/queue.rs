@@ -24,21 +24,21 @@ pub async fn start(
     let workers = config.read().await.daemon.upload_workers;
     let semaphore = Arc::new(Semaphore::new(workers));
 
-    // Use the user-configured machine name to avoid leaking the real hostname
-    // to cloud storage. Fall back to the OS hostname only when not configured.
-    let host = {
-        let name = config.read().await.machine.name.clone();
-        if name.is_empty() {
-            hostname::get()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .to_string()
-        } else {
-            name
-        }
-    };
-
     while let Some(path) = rx.recv().await {
+        // Use the user-configured machine name to avoid leaking the real hostname
+        // to cloud storage. Fall back to the OS hostname only when not configured.
+        let host = {
+            let name = config.read().await.machine.name.clone();
+            if name.is_empty() {
+                hostname::get()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string()
+            } else {
+                name
+            }
+        };
+
         // Skip 0-byte files — these are transient placeholders (e.g. the Windows
         // "New Text Document.txt" created before the user renames/writes to it).
         // A Modify event will fire once the user actually writes content.

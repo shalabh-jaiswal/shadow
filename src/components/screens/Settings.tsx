@@ -115,6 +115,17 @@ export function Settings() {
     }
   };
 
+  const setupOsIntegration = async () => {
+    try {
+      await ipc.setupOsIntegration();
+      // Show a temporary success message via error state (misnamed but works for simple feedback)
+      setError('OS Integration repaired successfully');
+      setTimeout(() => setError(null), 3000);
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
   const clearHashStore = async () => {
     setIsClearing(true);
     try {
@@ -363,6 +374,18 @@ export function Settings() {
             )}
             <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
               Daily rotating log files. Log level changes take effect on next restart.
+            </p>
+          </div>
+
+          <div>
+            <button
+              onClick={setupOsIntegration}
+              className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700"
+            >
+              Repair OS Integration
+            </button>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+              Re-install right-click "Send to Shadow" (Windows) or "Quick Actions" (macOS) integration.
             </p>
           </div>
         </div>

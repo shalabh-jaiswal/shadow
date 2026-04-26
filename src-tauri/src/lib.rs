@@ -106,6 +106,7 @@ pub fn run() {
             ipc::set_paused,
             ipc::get_paused,
             ipc::set_autostart,
+            ipc::setup_os_integration,
             ipc::check_for_updates,
             ipc::open_url,
             ipc::open_config_folder,

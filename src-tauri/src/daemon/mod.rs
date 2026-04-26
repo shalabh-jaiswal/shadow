@@ -1,6 +1,7 @@
 pub mod debouncer;
 pub mod filter;
 pub mod hasher;
+pub mod integration;
 pub mod queue;
 pub mod renamer;
 pub mod scanner;
@@ -173,6 +174,11 @@ pub async fn start(config: SharedConfig, app_handle: AppHandle) -> Result<Daemon
     // First launch autostart registration
     if let Err(e) = ensure_autostart(&app_handle, &config).await {
         tracing::warn!(error = %e, "Failed to ensure autostart setting");
+    }
+
+    // Set up OS explorer integration (Send To, Quick Actions, etc.)
+    if let Err(e) = integration::setup_os_integration() {
+        tracing::warn!(error = %e, "Failed to set up OS integration");
     }
 
     // Process any lingering spool jobs from a previous crash

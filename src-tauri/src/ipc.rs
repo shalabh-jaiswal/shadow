@@ -379,6 +379,11 @@ pub async fn check_for_updates(app: AppHandle) -> Result<Option<String>, String>
     Ok(update.map(|u| u.version.to_string()))
 }
 
+#[tauri::command]
+pub async fn setup_os_integration() -> Result<(), String> {
+    crate::daemon::integration::setup_os_integration().map_err(|e| e.to_string())
+}
+
 /// Open a URL in the system default browser.
 #[tauri::command]
 pub async fn open_url(url: String, app: AppHandle) -> Result<(), String> {
