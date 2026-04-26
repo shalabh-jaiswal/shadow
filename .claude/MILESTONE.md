@@ -107,6 +107,7 @@ v0.9.0 (2026-04-10): Ignore temp/junk files (vim swap, Office locks, .tmp, trail
 v0.10.0 (2026-04-20): Parallel provider uploads with per-provider live status, dynamic provider reload on config change, platform startup entry (LaunchAgent/XDG) written on launch.
 v0.11.0 (2026-04-23): Per-provider hash tracking in sled so enabling a new provider re-uploads existing files to it; mtime fast-path in scanner; system sync status card on Dashboard.
 v0.12.0 (2026-04-23): Unify recovery scan UX into status card, scan completion/duration logging, decouple scan schedule from component lifecycle via global store.
+v1.0.0 (2026-04-26): Major release — OS shell integration (Send to Shadow), ad-hoc folder/file backup via native notifications, file-system spooling for ad-hoc backups, directory skip in upload queue.
 
 ---
 
