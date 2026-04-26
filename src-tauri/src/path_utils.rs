@@ -1,4 +1,12 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+/// Get the cross-platform spool directory for ad-hoc backup jobs.
+pub fn get_jobs_dir() -> PathBuf {
+    dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".shadow")
+        .join("jobs")
+}
 
 pub fn remote_key(hostname: &str, local_path: &Path) -> String {
     let path_str = local_path.to_string_lossy().replace('\\', "/");

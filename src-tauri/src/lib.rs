@@ -21,6 +21,7 @@ pub fn run() {
     let _log_guard = logger::init(&log_level);
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_autostart::init(
@@ -106,6 +107,7 @@ pub fn run() {
             ipc::set_paused,
             ipc::get_paused,
             ipc::set_autostart,
+            ipc::setup_os_integration,
             ipc::check_for_updates,
             ipc::open_url,
             ipc::open_config_folder,

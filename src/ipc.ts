@@ -63,6 +63,9 @@ export const ipc = {
   setAutostart: (enabled: boolean): Promise<void> =>
     invoke<void>('set_autostart', { enabled }),
 
+  setupOsIntegration: (): Promise<void> =>
+    invoke<void>('setup_os_integration'),
+
   checkForUpdates: (): Promise<string | null> =>
     invoke<string | null>('check_for_updates'),
 

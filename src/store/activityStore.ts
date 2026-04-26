@@ -46,10 +46,10 @@ export const useActivityStore = create<ActivityState>((set) => ({
         let status = existing.status;
         
         // Priority for row status:
-        // 1. Final failures/errors
-        // 2. Active operations (uploading)
-        // 3. Successes
-        // 4. Queued/Skipped
+        // 1. Final failures/errors (if any provider failed, the whole row is marked)
+        // 2. Active operations (if any provider is still uploading)
+        // 3. Successes (if all providers are done)
+        // 4. Queued/Skipped (initial state)
         if (providerStatuses.some((s) => s === 'failed' || s === 'rename_error')) {
           status = providerStatuses.find((s) => s === 'failed' || s === 'rename_error') as ActivityStatus;
         } else if (providerStatuses.some((s) => s === 'error')) {
@@ -61,8 +61,21 @@ export const useActivityStore = create<ActivityState>((set) => ({
         } else if (providerStatuses.length > 0 && providerStatuses.every((s) => s === 'uploaded' || s === 'skipped')) {
           status = providerStatuses.some((s) => s === 'uploaded') ? 'uploaded' : 'skipped';
         } else {
-          // If no provider statuses yet, use the newest status (queued/skipped)
-          status = newEntry.status;
+          // If no provider statuses yet or we are just starting, use the newest status
+          // BUT only if the existing status isn't already "better" (e.g. don't go from uploading -> queued)
+          const priority: Record<ActivityStatus, number> = {
+            'failed': 5,
+            'rename_error': 5,
+            'error': 4,
+            'uploading': 3,
+            'uploaded': 2,
+            'renamed': 2,
+            'skipped': 1,
+            'queued': 0,
+          };
+          if (priority[newEntry.status] > priority[existing.status]) {
+            status = newEntry.status;
+          }
         }
 
         entries[existingIndex] = {
