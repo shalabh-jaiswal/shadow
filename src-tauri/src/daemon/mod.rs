@@ -175,6 +175,25 @@ pub async fn start(config: SharedConfig, app_handle: AppHandle) -> Result<Daemon
         tracing::warn!(error = %e, "Failed to ensure autostart setting");
     }
 
+    // Process any lingering spool jobs from a previous crash
+    let jobs_dir = crate::path_utils::get_jobs_dir();
+    if let Ok(entries) = std::fs::read_dir(&jobs_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|s| s.to_str()) == Some("shadow_job") {
+                if let Ok(contents) = std::fs::read_to_string(&path) {
+                    let target_path = PathBuf::from(contents.trim());
+                    if target_path.exists() {
+                        tracing::info!("Spool recovered job on startup: {:?}", target_path);
+                        let _ = upload_tx.try_send(target_path);
+                    }
+                    // Always delete the job file to avoid infinitely retrying dead paths
+                    let _ = std::fs::remove_file(&path);
+                }
+            }
+        }
+    }
+
     let initial_providers = build_providers(&config).await;
     let (provider_tx, provider_rx) = watch::channel(initial_providers);
 
@@ -288,7 +307,15 @@ pub async fn start(config: SharedConfig, app_handle: AppHandle) -> Result<Daemon
     // Create notify watcher
     let mut notify_watcher = watcher::create(watcher_tx)?;
 
-    // Register all watched folders
+    // Ensure the jobs directory exists and is watched for ad-hoc backups
+    let jobs_dir = crate::path_utils::get_jobs_dir();
+    if let Err(e) = std::fs::create_dir_all(&jobs_dir) {
+        tracing::error!(error = %e, "failed to create jobs directory");
+    } else if let Err(e) = watcher::watch_path(&mut notify_watcher, &jobs_dir) {
+        tracing::error!(dir = %jobs_dir.display(), error = %e, "failed to register jobs directory with watcher");
+    }
+
+    // Register all configured watched folders
     {
         let cfg = config.read().await;
         for folder in &cfg.watched_folders.paths {

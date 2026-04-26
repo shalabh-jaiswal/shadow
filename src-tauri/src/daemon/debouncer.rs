@@ -119,6 +119,30 @@ pub async fn start(
             _ => {
                 let debounce_ms = config.read().await.daemon.debounce_ms;
                 for path in event.paths {
+                    if path.extension().and_then(|s| s.to_str()) == Some("shadow_job") {
+                        let jobs_dir = crate::path_utils::get_jobs_dir();
+                        if path.starts_with(&jobs_dir) && !paused.load(Ordering::Relaxed) {
+                            if let Ok(contents) = std::fs::read_to_string(&path) {
+                                let target_path = std::path::PathBuf::from(contents.trim());
+                                if target_path.exists() {
+                                    tracing::info!("Spool intercepted job: {:?} -> {:?}", path, target_path);
+                                    if upload_tx.try_send(target_path).is_ok() {
+                                        // Acknowledge and destroy
+                                        if let Err(e) = std::fs::remove_file(&path) {
+                                            tracing::error!("Failed to delete job file {:?}: {}", path, e);
+                                        }
+                                    } else {
+                                        tracing::warn!("Upload queue full, keeping job file for later: {:?}", path);
+                                    }
+                                } else {
+                                    tracing::warn!("Target path in job file does not exist, deleting job: {:?}", path);
+                                    let _ = std::fs::remove_file(&path);
+                                }
+                            }
+                            continue; // Skip normal debouncing for job files
+                        }
+                    }
+
                     if let Some(handle) = timers.remove(&path) {
                         handle.abort();
                     }
