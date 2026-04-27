@@ -295,7 +295,10 @@ pub async fn set_daemon_config(
     let mut cfg = handle.config.write().await;
     cfg.daemon = daemon;
     cfg.machine = machine;
-    config::save(&cfg).map_err(|e| e.to_string())
+    config::save(&cfg).map_err(|e| e.to_string())?;
+    drop(cfg);
+    let _ = app.emit("config_changed", ());
+    Ok(())
 }
 
 #[tauri::command]

@@ -22,6 +22,21 @@ export function useGlobalScanSchedule() {
     }).catch(console.error);
   }, [setNextScanTime]);
 
+  // When daemon config changes, reset nextScanTime with the new interval from now
+  useEffect(() => {
+    const unlisten = events.onConfigChanged(() => {
+      ipc.getConfig().then((config) => {
+        const intervalMins = config.daemon.scan_interval_mins;
+        if (intervalMins > 0) {
+          setNextScanTime(Date.now() + intervalMins * 60 * 1000);
+        } else {
+          setNextScanTime(null);
+        }
+      }).catch(console.error);
+    });
+    return () => { unlisten.then((fn) => fn()); };
+  }, [setNextScanTime]);
+
   // Listen for scheduled scans completing to reset the timer
   useEffect(() => {
     const unlistenComplete = events.onScanComplete((payload) => {

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useScanScheduleStore } from '../../store/scanScheduleStore';
-import { ipc } from '../../ipc';
+import { events, ipc } from '../../ipc';
 
 function timeAgo(ts: number): string {
   const diff = Date.now() - ts;
@@ -31,9 +31,9 @@ export function RecoveryStatus({ isScanning, onBackupNow }: RecoveryStatusProps)
   const lastScanResult = useScanScheduleStore((s) => s.lastScanResult);
   const nextScanTime = useScanScheduleStore((s) => s.nextScanTime);
 
-  // Update "now" every minute to drive the countdown UI
+  // Update "now" every 10s so the countdown stays responsive near the boundary
   useEffect(() => {
-    const interval = setInterval(() => setNow(Date.now()), 60000);
+    const interval = setInterval(() => setNow(Date.now()), 10000);
     return () => clearInterval(interval);
   }, []);
 
@@ -41,6 +41,13 @@ export function RecoveryStatus({ isScanning, onBackupNow }: RecoveryStatusProps)
     ipc.getConfig().then((config) => {
       setIntervalMins(config.daemon.scan_interval_mins);
     });
+
+    const unlisten = events.onConfigChanged(() => {
+      ipc.getConfig().then((config) => {
+        setIntervalMins(config.daemon.scan_interval_mins);
+      });
+    });
+    return () => { unlisten.then((fn) => fn()); };
   }, []);
 
   if (intervalMins === null) {

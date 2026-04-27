@@ -129,4 +129,7 @@ export const events = {
 
   onFileRenameError: (cb: (e: FileRenameErrorEvent) => void): Promise<UnlistenFn> =>
     listen<FileRenameErrorEvent>('file_rename_error', (e) => cb(e.payload)),
+
+  onConfigChanged: (cb: () => void): Promise<UnlistenFn> =>
+    listen<null>('config_changed', () => cb()),
 } as const;
