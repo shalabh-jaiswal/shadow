@@ -1,6 +1,6 @@
 {
   "productName": "Shadow",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "identifier": "com.shadow.app",
   "build": {
     "frontendDist": "../dist",
