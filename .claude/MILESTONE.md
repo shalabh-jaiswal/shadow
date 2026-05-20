@@ -333,3 +333,14 @@ signing in CI, and ship signed installer artifacts as a GitHub Release.
 | M4 | Full UI | All 4 screens wired to IPC | ✅ Done |
 | M5 | Initial Scan | 10k-file folder fully backed up | ✅ Done |
 | M6 | Polish & Release | Unsigned installers on GitHub Releases | ✅ Done |
+| M7 | Google Drive | OAuth Loopback & Keyring backup | ❌ Deferred |
+
+---
+
+## M7 — Google Drive Provider (Deferred)
+
+### Goal
+Add Google Drive support using a desktop OAuth 2.0 flow, local TCP loopback server, and OS-native secure token storage, allowing consumer users to connect their personal Google Drive without GCP console setup.
+
+### Status
+This milestone is **Deferred**. A complete, detailed architectural design and implementation plan is documented in [.claude/gdrive-implementation-plan.md](file:///c:/projects/shadow/.claude/gdrive-implementation-plan.md).
