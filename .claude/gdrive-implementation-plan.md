@@ -8,11 +8,12 @@ This design aims to provide a zero-configuration, 1-click authentication experie
 
 ## 1. Core Architectural Decisions
 
-### A. OAuth 2.0 Desktop Loopback Server Flow
+### A. OAuth 2.0 Desktop Loopback Server Flow with PKCE
 To connect a user's personal Google Drive without requiring them to set up Google Cloud Platform (GCP) credentials:
-1. **Loopback Server:** The Tauri Rust backend starts a temporary local TCP listener (e.g., `http://127.0.0.1:40003` or dynamically allocated port) to receive the OAuth redirect code.
-2. **System Browser Open:** The app opens the system browser to the Google OAuth Consent URL using Tauri's shell features.
-3. **Token Exchange:** Once the user logs in and consents, Google redirects their browser to the local server, which captures the `code` parameter, shuts down the listener, and exchanges the code for tokens.
+1. **PKCE Setup:** The app generates a secure random `code_verifier` and its SHA-256 hash, the `code_challenge`.
+2. **Loopback Server:** The Tauri Rust backend starts a temporary local TCP listener (e.g., `http://127.0.0.1:40003` or dynamically allocated port) with a strict timeout to receive the OAuth redirect code.
+3. **System Browser Open:** The app opens the system browser to the Google OAuth Consent URL, including the PKCE `code_challenge` and a `state` parameter, using Tauri's shell features.
+4. **Token Exchange:** Once the user logs in and consents, Google redirects their browser to the local server, which verifies the `state`, captures the `code` parameter, shuts down the listener, and exchanges the code (along with the `code_verifier`) for tokens.
 
 ### B. Secure Token Storage (OS Keyring)
 In compliance with Shadow's architecture guidelines, user credentials (the persistent **Refresh Token**) must never be written to `config.toml` or the local `sled` database in plaintext.
@@ -49,6 +50,9 @@ Google Drive is a node-based file system using IDs, not flat absolute paths.
 keyring = "2.1"
 reqwest = { version = "0.11", features = ["json", "multipart"] }
 url = "2.5"
+sha2 = "0.10"
+base64 = "0.22"
+rand = "0.8"
 ```
 
 #### 2. Configuration (`src-tauri/src/config.rs`)
@@ -86,13 +90,16 @@ pub fn delete_refresh_token() -> anyhow::Result<()> {
 ```
 
 #### 4. OAuth Server (`src-tauri/src/oauth.rs`)
+* Generate a random 32-byte `code_verifier` (base64url encoded) and a `state` string. Hash the verifier with SHA-256 and base64url encode it to create the `code_challenge`.
 * Construct the consent URL containing:
   - `response_type=code`
   - `client_id`
   - `redirect_uri=http://127.0.0.1:40003`
   - `scope=https://www.googleapis.com/auth/drive.file`
   - `access_type=offline` & `prompt=consent` (ensures a Refresh Token is returned)
-* Start local `TcpListener` on port `40003`, wait for response, extract the `code`, and exchange it via standard HTTPS POST with Google's endpoint: `https://oauth2.googleapis.com/token`.
+  - `state=<random_state>`
+  - `code_challenge=<challenge>` & `code_challenge_method=S256`
+* Start local `TcpListener` on port `40003` with a 5-minute timeout. Wait for response, verify `state` matches, extract the `code`, and exchange it via standard HTTPS POST with Google's endpoint (`https://oauth2.googleapis.com/token`), including the `code_verifier` in the POST body.
 
 #### 5. Google Drive Provider (`src-tauri/src/providers/gdrive.rs`)
 Implement the `BackupProvider` trait:
