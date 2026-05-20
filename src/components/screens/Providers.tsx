@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useProviderStore } from '../../store/providerStore';
 import { useProviderStatus } from '../../hooks/useProviderStatus';
 
@@ -36,10 +36,11 @@ function ProviderCard({
             {description}
           </p>
         </div>
-        <label className="relative inline-flex items-center cursor-pointer">
+        <label className={`relative inline-flex items-center ${isSaving ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
           <input
             type="checkbox"
             checked={enabled}
+            disabled={isSaving}
             onChange={(e) => onToggle(e.target.checked)}
             className="sr-only peer"
           />
@@ -125,20 +126,27 @@ export function Providers() {
     s3,
     gcs,
     nas,
+    gdrive,
     testResults,
     isSaving,
     load,
     setS3,
     setGcs,
     setNas,
+    setGdrive,
     saveS3,
     saveGcs,
     saveNas,
+    saveGdrive,
+    connectGdrive,
+    disconnectGdrive,
     testProvider,
   } = useProviderStore();
 
   // Subscribe to provider status events
   useProviderStatus();
+
+  const [gdriveError, setGdriveError] = useState<string | null>(null);
 
   useEffect(() => {
     load();
@@ -250,6 +258,54 @@ export function Providers() {
             />
           </div>
         </ProviderCard>
+
+        {/* Google Drive Provider */}
+        <div className="space-y-2">
+          {isSaving.gdrive && (
+            <div className="bg-blue-50 dark:bg-blue-900/20 text-blue-800 dark:text-blue-300 px-4 py-2 rounded-md border border-blue-200 dark:border-blue-800 text-sm">
+              ⏳ Waiting for Google authorization in your browser…
+            </div>
+          )}
+          {gdriveError && (
+            <div className="bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-300 px-4 py-2 rounded-md border border-red-200 dark:border-red-800 text-sm">
+              <span className="font-semibold">Authorization failed: </span>{gdriveError}
+            </div>
+          )}
+          <ProviderCard
+            title="Google Drive"
+            description="Back up to Google Drive storage"
+            enabled={gdrive.enabled}
+            onToggle={async (enabled) => {
+              setGdriveError(null);
+              try {
+                if (enabled) {
+                  await connectGdrive();
+                } else {
+                  await disconnectGdrive();
+                }
+              } catch (e) {
+                setGdriveError(String(e));
+              }
+            }}
+            onSave={saveGdrive}
+            onTest={() => testProvider('gdrive')}
+            isSaving={isSaving.gdrive}
+            testResult={testResults.gdrive}
+          >
+            <div className="space-y-4">
+              <div className="bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-300 p-4 rounded-md border border-green-200 dark:border-green-800 text-sm">
+                <span className="font-semibold block mb-1">✓ Google Drive Authorized</span>
+                Shadow is linked with your Google account. Backups will sync to your Drive.
+              </div>
+              <TextInput
+                label="Backup Prefix / Directory Name"
+                value={gdrive.prefix}
+                onChange={(prefix) => setGdrive({ ...gdrive, prefix })}
+                placeholder="Shadow"
+              />
+            </div>
+          </ProviderCard>
+        </div>
 
         {/* NAS Provider */}
         <ProviderCard

@@ -9,6 +9,7 @@ import type {
   FileRenamedEvent,
   FolderStatus,
   GcsConfig,
+  GdriveConfig,
   MachineConfig,
   NasConfig,
   ProviderStatusEvent,
@@ -83,6 +84,12 @@ export const ipc = {
 
   openLogFolder: (): Promise<void> =>
     invoke<void>('open_log_folder'),
+
+  startGdriveAuth: (): Promise<void> =>
+    invoke<void>('start_gdrive_auth'),
+
+  disconnectGdrive: (): Promise<void> =>
+    invoke<void>('disconnect_gdrive'),
 } as const;
 
 // ── Provider config helpers ───────────────────────────────────────────────────
@@ -91,6 +98,7 @@ export const providerConfig = {
   saveS3: (cfg: S3Config) => ipc.setProviderConfig('s3', JSON.stringify(cfg)),
   saveGcs: (cfg: GcsConfig) => ipc.setProviderConfig('gcs', JSON.stringify(cfg)),
   saveNas: (cfg: NasConfig) => ipc.setProviderConfig('nas', JSON.stringify(cfg)),
+  saveGdrive: (cfg: GdriveConfig) => ipc.setProviderConfig('gdrive', JSON.stringify(cfg)),
 } as const;
 
 // ── Event subscriptions ───────────────────────────────────────────────────────

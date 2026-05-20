@@ -1,7 +1,7 @@
-use crate::config::{self, AppConfig, DaemonConfig, GcsConfig, MachineConfig, NasConfig, S3Config};
+use crate::config::{self, AppConfig, DaemonConfig, GcsConfig, GdriveConfig, MachineConfig, NasConfig, S3Config};
 use crate::daemon::stats::StatsSnapshot;
 use crate::daemon::watcher;
-use crate::providers::{gcs::GcsProvider, nas::NasProvider, s3::S3Provider, BackupProvider};
+use crate::providers::{gcs::GcsProvider, gdrive::GdriveProvider, nas::NasProvider, s3::S3Provider, BackupProvider};
 use serde::Serialize;
 use std::path::Path;
 use std::sync::atomic::Ordering;
@@ -231,6 +231,15 @@ pub async fn test_provider(
                 .map_err(|e| e.to_string())?;
             provider.test_connection().await.map_err(|e| e.to_string())
         }
+        "gdrive" => {
+            let daemon = state.0.lock().await;
+            let cfg = daemon.config.read().await;
+            if !cfg.gdrive.enabled {
+                return Err("Google Drive is not enabled".into());
+            }
+            let provider = GdriveProvider::new(&cfg.gdrive.prefix);
+            provider.test_connection().await.map_err(|e| e.to_string())
+        }
         _ => Err(format!("unknown provider: {provider_name}")),
     }
 }
@@ -260,6 +269,11 @@ pub async fn set_provider_config(
                 let nas: NasConfig =
                     serde_json::from_str(&config_json).map_err(|e| e.to_string())?;
                 cfg.nas = nas;
+            }
+            "gdrive" => {
+                let gdrive: GdriveConfig =
+                    serde_json::from_str(&config_json).map_err(|e| e.to_string())?;
+                cfg.gdrive = gdrive;
             }
             _ => return Err(format!("unknown provider: {provider}")),
         }
@@ -436,4 +450,80 @@ pub async fn open_data_folder(app: AppHandle) -> Result<(), String> {
     app.opener()
         .open_path(path.to_string_lossy().as_ref(), None::<&str>)
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn start_gdrive_auth(
+    state: State<'_, DaemonHandle>,
+    app: AppHandle,
+) -> Result<(), String> {
+    // Generate PKCE code verifier and challenge
+    let (verifier, challenge) = crate::oauth::generate_pkce();
+    let oauth_state = crate::oauth::generate_state();
+
+    // Construct the Google OAuth Consent URL
+    let (client_id, _) = crate::oauth::get_client_credentials()
+        .map_err(|e: anyhow::Error| e.to_string())?;
+    let consent_url = format!(
+        "https://accounts.google.com/o/oauth2/v2/auth?response_type=code&client_id={}&redirect_uri=http://127.0.0.1:40003&scope=https://www.googleapis.com/auth/drive.file&access_type=offline&prompt=consent&state={}&code_challenge={}&code_challenge_method=S256",
+        client_id, oauth_state, challenge
+    );
+
+    // Open URL in system default browser
+    use tauri_plugin_opener::OpenerExt;
+    app.opener()
+        .open_url(consent_url, None::<&str>)
+        .map_err(|e| e.to_string())?;
+
+    // Start loopback listener to capture the code
+    let code = crate::oauth::start_loopback_listener(&oauth_state)
+        .await
+        .map_err(|e: anyhow::Error| e.to_string())?;
+
+    // Exchange code for tokens
+    let token_resp = crate::oauth::exchange_code_for_tokens(&code, &verifier)
+        .await
+        .map_err(|e: anyhow::Error| e.to_string())?;
+
+    // Save refresh token to keyring
+    if let Some(ref_token) = token_resp.refresh_token {
+        crate::keyring_utils::save_refresh_token(&ref_token)
+            .map_err(|e: anyhow::Error| e.to_string())?;
+    } else {
+        return Err("No refresh token returned by Google. Please disconnect and try again.".into());
+    }
+
+    // Update config to enable gdrive
+    let daemon = state.0.lock().await;
+    {
+        let mut cfg = daemon.config.write().await;
+        cfg.gdrive.enabled = true;
+        crate::config::save(&cfg).map_err(|e| e.to_string())?;
+    }
+
+    // Rebuild active providers
+    daemon.rebuild_providers().await.map_err(|e| e.to_string())?;
+
+    let _ = app.emit("config_changed", ());
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn disconnect_gdrive(
+    state: State<'_, DaemonHandle>,
+    app: AppHandle,
+) -> Result<(), String> {
+    let _ = crate::keyring_utils::delete_refresh_token();
+
+    let daemon = state.0.lock().await;
+    {
+        let mut cfg = daemon.config.write().await;
+        cfg.gdrive.enabled = false;
+        crate::config::save(&cfg).map_err(|e| e.to_string())?;
+    }
+    
+    daemon.rebuild_providers().await.map_err(|e| e.to_string())?;
+    
+    let _ = app.emit("config_changed", ());
+    Ok(())
 }
