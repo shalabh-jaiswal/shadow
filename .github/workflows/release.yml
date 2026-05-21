@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -43,6 +44,8 @@ jobs:
         uses: tauri-apps/tauri-action@v0.5
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHADOW_GDRIVE_CLIENT_ID: ${{ secrets.SHADOW_GDRIVE_CLIENT_ID }}
+          SHADOW_GDRIVE_CLIENT_SECRET: ${{ secrets.SHADOW_GDRIVE_CLIENT_SECRET }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "Shadow ${{ github.ref_name }}"
@@ -83,6 +86,8 @@ jobs:
         uses: tauri-apps/tauri-action@v0.5
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHADOW_GDRIVE_CLIENT_ID: ${{ secrets.SHADOW_GDRIVE_CLIENT_ID }}
+          SHADOW_GDRIVE_CLIENT_SECRET: ${{ secrets.SHADOW_GDRIVE_CLIENT_SECRET }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "Shadow ${{ github.ref_name }}"
@@ -132,6 +137,8 @@ jobs:
         uses: tauri-apps/tauri-action@v0.5
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHADOW_GDRIVE_CLIENT_ID: ${{ secrets.SHADOW_GDRIVE_CLIENT_ID }}
+          SHADOW_GDRIVE_CLIENT_SECRET: ${{ secrets.SHADOW_GDRIVE_CLIENT_SECRET }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "Shadow ${{ github.ref_name }}"
