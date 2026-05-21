@@ -55,7 +55,9 @@ pub fn generate_state() -> String {
 
 pub fn get_client_credentials() -> Result<(&'static str, &'static str)> {
     let client_id = CLIENT_ID.ok_or_else(|| {
-        anyhow!("Google Drive Client ID was not set at build time. Check your .env file and rebuild.")
+        anyhow!(
+            "Google Drive Client ID was not set at build time. Check your .env file and rebuild."
+        )
     })?;
     let client_secret = CLIENT_SECRET.ok_or_else(|| {
         anyhow!("Google Drive Client Secret was not set at build time. Check your .env file and rebuild.")
@@ -74,7 +76,7 @@ pub async fn start_loopback_listener(expected_state: &str) -> Result<String> {
             let (mut socket, _) = listener.accept().await?;
             let mut reader = BufReader::new(&mut socket);
             let mut request_line = String::new();
-            
+
             if reader.read_line(&mut request_line).await.is_err() {
                 continue;
             }
@@ -167,7 +169,10 @@ pub async fn exchange_code_for_tokens(code: &str, verifier: &str) -> Result<Toke
 
     if !response.status().is_success() {
         let err_text = response.text().await?;
-        return Err(anyhow!("Failed to exchange authorization code: {}", err_text));
+        return Err(anyhow!(
+            "Failed to exchange authorization code: {}",
+            err_text
+        ));
     }
 
     let token_resp: TokenResponse = response.json().await?;

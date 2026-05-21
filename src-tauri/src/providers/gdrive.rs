@@ -103,12 +103,7 @@ impl GdriveProvider {
             &[("q", query.as_str()), ("fields", "files(id, name)")],
         )?;
 
-        let response: reqwest::Response = self
-            .client
-            .get(url)
-            .bearer_auth(token)
-            .send()
-            .await?;
+        let response: reqwest::Response = self.client.get(url).bearer_auth(token).send().await?;
 
         if !response.status().is_success() {
             let err_text = response.text().await?;
@@ -177,7 +172,7 @@ impl GdriveProvider {
             if current_path.is_empty() {
                 current_path = part.to_string();
             } else {
-                current_path.push_str("/");
+                current_path.push('/');
                 current_path.push_str(part);
             }
 
@@ -252,9 +247,10 @@ impl BackupProvider for GdriveProvider {
     async fn upload(&self, local_path: &Path, remote_key: &str) -> Result<()> {
         let token = self.get_valid_access_token().await?;
         let parent_id = self.resolve_parent_folder_id(remote_key, &token).await?;
-        let filename = remote_key.split('/').last().ok_or_else(|| {
-            anyhow!("Invalid remote key: cannot extract filename")
-        })?;
+        let filename = remote_key
+            .split('/')
+            .next_back()
+            .ok_or_else(|| anyhow!("Invalid remote key: cannot extract filename"))?;
 
         // 1. Check if file already exists
         let existing_id = self.search_item(filename, &parent_id, None, &token).await?;
@@ -320,10 +316,13 @@ impl BackupProvider for GdriveProvider {
     async fn rename(&self, old_remote_key: &str, new_remote_key: &str) -> Result<()> {
         let token = self.get_valid_access_token().await?;
 
-        let old_filename = old_remote_key.split('/').last().ok_or_else(|| {
-            anyhow!("Invalid old remote key: cannot extract filename")
-        })?;
-        let old_parent_id = self.resolve_parent_folder_id(old_remote_key, &token).await?;
+        let old_filename = old_remote_key
+            .split('/')
+            .next_back()
+            .ok_or_else(|| anyhow!("Invalid old remote key: cannot extract filename"))?;
+        let old_parent_id = self
+            .resolve_parent_folder_id(old_remote_key, &token)
+            .await?;
 
         // Find file ID
         let file_id = self
@@ -337,10 +336,13 @@ impl BackupProvider for GdriveProvider {
                 )
             })?;
 
-        let new_filename = new_remote_key.split('/').last().ok_or_else(|| {
-            anyhow!("Invalid new remote key: cannot extract filename")
-        })?;
-        let new_parent_id = self.resolve_parent_folder_id(new_remote_key, &token).await?;
+        let new_filename = new_remote_key
+            .split('/')
+            .next_back()
+            .ok_or_else(|| anyhow!("Invalid new remote key: cannot extract filename"))?;
+        let new_parent_id = self
+            .resolve_parent_folder_id(new_remote_key, &token)
+            .await?;
 
         let mut url = format!("https://www.googleapis.com/drive/v3/files/{}", file_id);
 
@@ -366,7 +368,10 @@ impl BackupProvider for GdriveProvider {
 
         if !response.status().is_success() {
             let err_text = response.text().await?;
-            return Err(anyhow!("Failed to rename/move Google Drive file: {}", err_text));
+            return Err(anyhow!(
+                "Failed to rename/move Google Drive file: {}",
+                err_text
+            ));
         }
 
         Ok(())

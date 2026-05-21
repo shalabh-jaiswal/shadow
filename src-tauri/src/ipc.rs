@@ -1,7 +1,11 @@
-use crate::config::{self, AppConfig, DaemonConfig, GcsConfig, GdriveConfig, MachineConfig, NasConfig, S3Config};
+use crate::config::{
+    self, AppConfig, DaemonConfig, GcsConfig, GdriveConfig, MachineConfig, NasConfig, S3Config,
+};
 use crate::daemon::stats::StatsSnapshot;
 use crate::daemon::watcher;
-use crate::providers::{gcs::GcsProvider, gdrive::GdriveProvider, nas::NasProvider, s3::S3Provider, BackupProvider};
+use crate::providers::{
+    gcs::GcsProvider, gdrive::GdriveProvider, nas::NasProvider, s3::S3Provider, BackupProvider,
+};
 use serde::Serialize;
 use std::path::Path;
 use std::sync::atomic::Ordering;
@@ -462,8 +466,8 @@ pub async fn start_gdrive_auth(
     let oauth_state = crate::oauth::generate_state();
 
     // Construct the Google OAuth Consent URL
-    let (client_id, _) = crate::oauth::get_client_credentials()
-        .map_err(|e: anyhow::Error| e.to_string())?;
+    let (client_id, _) =
+        crate::oauth::get_client_credentials().map_err(|e: anyhow::Error| e.to_string())?;
     let consent_url = format!(
         "https://accounts.google.com/o/oauth2/v2/auth?response_type=code&client_id={}&redirect_uri=http://127.0.0.1:40003&scope=https://www.googleapis.com/auth/drive.file&access_type=offline&prompt=consent&state={}&code_challenge={}&code_challenge_method=S256",
         client_id, oauth_state, challenge
@@ -502,7 +506,10 @@ pub async fn start_gdrive_auth(
     }
 
     // Rebuild active providers
-    daemon.rebuild_providers().await.map_err(|e| e.to_string())?;
+    daemon
+        .rebuild_providers()
+        .await
+        .map_err(|e| e.to_string())?;
 
     let _ = app.emit("config_changed", ());
     Ok(())
@@ -521,9 +528,12 @@ pub async fn disconnect_gdrive(
         cfg.gdrive.enabled = false;
         crate::config::save(&cfg).map_err(|e| e.to_string())?;
     }
-    
-    daemon.rebuild_providers().await.map_err(|e| e.to_string())?;
-    
+
+    daemon
+        .rebuild_providers()
+        .await
+        .map_err(|e| e.to_string())?;
+
     let _ = app.emit("config_changed", ());
     Ok(())
 }
