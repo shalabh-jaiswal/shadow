@@ -60,6 +60,8 @@ The application runs as a lean background daemon with near-zero idle resource co
 - **No file versioning or restore UI** — this is a pure backup tool.
 - **No peer-to-peer or LAN-sync features.**
 - **No cloud-to-cloud replication.**
+- **No Google Drive Support (v1.0)** — Google Drive backup provider is deferred to a future milestone. Refer to the archived architecture design at `.claude/gdrive-implementation-plan.md`.
+
 
 ---
 
@@ -193,6 +195,8 @@ The user can enable any combination of the three providers. All enabled provider
 | AWS S3 | Env vars / `~/.aws/credentials` / IAM role | Multipart upload (>10MB, 8MB parts) | Bucket name, Region, optional endpoint override |
 | Google Cloud Storage | Application Default Credentials / Service Account JSON | Resumable upload (>10MB) | Bucket name, Project ID, optional credentials path |
 | NAS (mount point) | OS-level mount (SMB/NFS/AFP mounted before app starts) | Streaming file copy | Mount path (local directory that maps to NAS share) |
+| Google Drive (Deferred) | OAuth 2.0 Loopback + OS Keyring (Silent Refresh) | Multipart / Media Upload | Enabled, Prefix, Root Folder ID |
+
 
 > **IMPORTANT:** Credentials for S3 and GCS are NEVER stored in the Shadow config file. The app reads credentials from the standard provider chains (AWS credential chain, GCP Application Default Credentials). The UI only stores non-secret configuration (bucket names, region, paths).
 
@@ -1021,6 +1025,8 @@ shadow/
 | OQ-4 | Maximum file size? | Unlimited / Hard cap (e.g. 50GB) | Unlimited; streaming multipart/resumable upload handles any size |
 | OQ-5 | Auto-update mechanism? | Tauri built-in updater / Manual download | Tauri built-in updater with GitHub Releases as the update server |
 | OQ-6 | File exclusion patterns? | None (v1) / Glob pattern list in config | Add `.gitignore`-style exclusion patterns in v1.1; mark as known gap in v1.0 |
+| OQ-7 | GDrive Auth for Non-Technical Users? | User GCP Accounts / Baked-in OAuth Client + Keyring | Use App-level OAuth Client (baked-in Client ID & Secret) with PKCE, temporary loopback localhost server, and OS-native Keyring storage for User Refresh Tokens to ensure a 1-click UX. Refer to `.claude/gdrive-implementation-plan.md`. |
+
 
 ---
 

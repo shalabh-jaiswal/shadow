@@ -39,12 +39,19 @@ export interface GcsConfig {
   prefix: string;
 }
 
+export interface GdriveConfig {
+  enabled: boolean;
+  root_folder_id: string;
+  prefix: string;
+}
+
 export interface AppConfig {
   daemon: DaemonConfig;
   machine: MachineConfig;
   nas: NasConfig;
   s3: S3Config;
   gcs: GcsConfig;
+  gdrive: GdriveConfig;
 }
 
 // ── IPC event payloads ────────────────────────────────────────────────────────

@@ -9,7 +9,9 @@ pub mod stats;
 pub mod watcher;
 
 use crate::config::SharedConfig;
-use crate::providers::{gcs::GcsProvider, nas::NasProvider, s3::S3Provider, DynProvider};
+use crate::providers::{
+    gcs::GcsProvider, gdrive::GdriveProvider, nas::NasProvider, s3::S3Provider, DynProvider,
+};
 use anyhow::Result;
 use notify::RecommendedWatcher;
 use sled::Db;
@@ -63,6 +65,9 @@ pub async fn build_providers(config: &SharedConfig) -> Vec<DynProvider> {
             Ok(provider) => p.push(Arc::new(provider)),
             Err(e) => tracing::error!(error = %e, "GCS provider init failed"),
         }
+    }
+    if cfg.gdrive.enabled {
+        p.push(Arc::new(GdriveProvider::new(&cfg.gdrive.prefix)));
     }
     p
 }

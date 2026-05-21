@@ -33,6 +33,13 @@ pub struct GcsConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct GdriveConfig {
+    pub enabled: bool,
+    pub root_folder_id: String, // Cached root backup folder ID on GDrive
+    pub prefix: String,         // Optional user prefix
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AppConfig {
     #[serde(default)]
     pub daemon: DaemonConfig,
@@ -44,6 +51,8 @@ pub struct AppConfig {
     pub s3: S3Config,
     #[serde(default)]
     pub gcs: GcsConfig,
+    #[serde(default)]
+    pub gdrive: GdriveConfig,
     #[serde(default)]
     pub watched_folders: WatchedFolders,
 }

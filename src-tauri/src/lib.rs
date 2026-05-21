@@ -1,7 +1,9 @@
 mod config;
 mod daemon;
 mod ipc;
+mod keyring_utils;
 mod logger;
+mod oauth;
 mod path_utils;
 mod providers;
 
@@ -114,6 +116,8 @@ pub fn run() {
             ipc::open_data_folder,
             ipc::get_log_path,
             ipc::open_log_folder,
+            ipc::start_gdrive_auth,
+            ipc::disconnect_gdrive,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
