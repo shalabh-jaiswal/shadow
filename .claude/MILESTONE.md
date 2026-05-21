@@ -96,7 +96,7 @@ All emitted via `app_handle.emit()`:
 
 ---
 
-## Active: Post-M6 Feature Development (v0.11.0)
+## Active: Post-M6 Feature Development (v2.0.0)
 v0.3.0 (2026-03-30): Periodic reconciliation for failed uploads, per-folder backup mode (full vs forward-only).
 v0.4.0 (2026-03-30): About screen, GitHub/bug report links via system browser, fixed README links.
 v0.5.0 (2026-03-30): Fix duplicate tray icon, dynamic app version on About page.
@@ -108,6 +108,7 @@ v0.10.0 (2026-04-20): Parallel provider uploads with per-provider live status, d
 v0.11.0 (2026-04-23): Per-provider hash tracking in sled so enabling a new provider re-uploads existing files to it; mtime fast-path in scanner; system sync status card on Dashboard.
 v0.12.0 (2026-04-23): Unify recovery scan UX into status card, scan completion/duration logging, decouple scan schedule from component lifecycle via global store.
 v1.0.0 (2026-04-26): Major release — OS shell integration (Send to Shadow), ad-hoc folder/file backup via native notifications, file-system spooling for ad-hoc backups, directory skip in upload queue.
+v2.0.0 (2026-05-21): Major release — Google Drive integration with loopback OAuth authentication flow, secure OS-native keychain storage, and CI logging secret protection.
 
 ---
 
@@ -333,14 +334,14 @@ signing in CI, and ship signed installer artifacts as a GitHub Release.
 | M4 | Full UI | All 4 screens wired to IPC | ✅ Done |
 | M5 | Initial Scan | 10k-file folder fully backed up | ✅ Done |
 | M6 | Polish & Release | Unsigned installers on GitHub Releases | ✅ Done |
-| M7 | Google Drive | OAuth Loopback & Keyring backup | ❌ Deferred |
+| M7 | Google Drive | OAuth Loopback & Keyring backup | ✅ Done |
 
 ---
 
-## M7 — Google Drive Provider (Deferred)
+## M7 — Google Drive Provider
 
 ### Goal
 Add Google Drive support using a desktop OAuth 2.0 flow, local TCP loopback server, and OS-native secure token storage, allowing consumer users to connect their personal Google Drive without GCP console setup.
 
 ### Status
-This milestone is **Deferred**. A complete, detailed architectural design and implementation plan is documented in [.claude/gdrive-implementation-plan.md](file:///c:/projects/shadow/.claude/gdrive-implementation-plan.md).
+Complete (2026-05-21). Google Drive provider is fully implemented and secured.
