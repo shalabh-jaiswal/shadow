@@ -6,12 +6,12 @@
 [![Windows](https://img.shields.io/badge/Windows-supported-brightgreen?style=flat-square&logo=windows)](https://github.com/shalabh-jaiswal/shadow/releases/latest)
 [![Linux](https://img.shields.io/badge/Linux-supported-brightgreen?style=flat-square&logo=linux)](https://github.com/shalabh-jaiswal/shadow/releases/latest)
 
-Shadow is a real-time, cross-platform file backup desktop app. It watches folders using OS-native kernel events and instantly backs up new or modified files to AWS S3, Google Cloud Storage, and/or a NAS mount point.
+Shadow is a real-time, cross-platform file backup desktop app. It watches folders using OS-native kernel events and instantly backs up new or modified files to AWS S3, Google Cloud Storage, Google Drive, and/or a NAS mount point.
 
 ## Features
 
 - **Real-time backup**: Monitors file changes using OS kernel events (no polling)
-- **Multi-cloud support**: Backup to AWS S3, Google Cloud Storage, and NAS simultaneously
+- **Multi-cloud support**: Backup to AWS S3, Google Cloud Storage, Google Drive, and NAS simultaneously
 - **Cross-platform**: Runs on macOS, Windows, and Linux
 - **Intelligent deduplication**: Uses blake3 hashing to skip unchanged files
 - **System tray integration**: Runs in background with tray icon
@@ -75,6 +75,11 @@ The configuration file is automatically created with default values when you fir
 #### Google Cloud Storage
 - Credentials: Uses Application Default Credentials or a service account JSON file
 - Required permissions: `storage.objects.create`, `storage.objects.get`, `storage.buckets.get`
+
+#### Google Drive
+- Credentials: Uses a desktop OAuth 2.0 flow with a local TCP loopback server.
+- Setup: Toggling the provider in the settings UI initiates a browser authentication flow. No manual API keys or credentials setup is required for the end-user.
+- Security: OAuth access and refresh tokens are stored securely in the operating system's native keychain (e.g., macOS Keychain, Windows Credential Manager, Linux Secret Service).
 
 #### NAS
 - Mount the NAS as a local directory (SMB, NFS, etc.)

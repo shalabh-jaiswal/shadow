@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What This App Does
 Shadow is a real-time, cross-platform file backup desktop app. It watches folders using
 OS-native kernel events and instantly backs up new or modified files to AWS S3, Google
-Cloud Storage, and/or a NAS mount point. Built with Tauri 2 (Rust backend) + React/TypeScript
+Cloud Storage, Google Drive, and/or a NAS mount point. Built with Tauri 2 (Rust backend) + React/TypeScript
 frontend. Targets macOS, Windows, and Linux.
 
 ## Stack at a Glance
@@ -49,6 +49,7 @@ shadow/
 │   │       ├── mod.rs               # BackupProvider trait
 │   │       ├── s3.rs
 │   │       ├── gcs.rs
+│   │       ├── gdrive.rs
 │   │       └── nas.rs
 │   ├── Cargo.toml
 │   └── tauri.conf.json
@@ -95,14 +96,14 @@ cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
 - Use `anyhow::Result` for error propagation internally. Convert to `String` only at the IPC boundary.
 - Use `thiserror` for defining custom error types in library code.
 - Every async function must be inside a `tokio::spawn` or a `#[tokio::main]` / Tauri command context.
-- The `BackupProvider` trait MUST be used for all provider implementations — never call S3/GCS/NAS code directly from the daemon.
+- The `BackupProvider` trait MUST be used for all provider implementations — never call S3/GCS/NAS/Google Drive code directly from the daemon.
 - Debounce window is 200ms. Never hardcode other values — read from `AppConfig`.
 - blake3 hash MUST be checked before every upload. Never skip the hash check.
 - sled DB path: `~/.shadow/hashdb/` — use the `dirs` crate to resolve the home directory cross-platform.
 - Upload concurrency default is 4. Always enforce the configured cap via a `tokio::sync::Semaphore`.
 - Retry policy: 3 attempts, exponential backoff 1s/4s/16s using `tokio-retry`.
 - All IPC events MUST be emitted via `app_handle.emit()` — never return large data sets from commands, stream them as events instead.
-- NEVER store secrets (AWS keys, GCS tokens) in config.toml. Read from env vars / credential chains only.
+- NEVER store secrets (AWS keys, GCS tokens, Google Drive credentials) in config.toml. Read from env vars / credential chains / OS keyring only.
 
 ### Tauri IPC
 - All Tauri commands are defined in `src-tauri/src/ipc.rs` and registered in `lib.rs`.
